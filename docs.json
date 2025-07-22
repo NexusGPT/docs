@@ -61,7 +61,7 @@
       "anchors": [
         {
           "anchor": "Dashboard",
-          "href": "https://gpt.nexus",
+          "href": "https://gpt.nexus/App",
           "icon": "gauge"
         }
       ]
@@ -81,7 +81,7 @@
     "primary": {
       "type": "button",
       "label": "Get API Key",
-      "href": "https://gpt.nexus"
+      "href": "https://gpt.nexus/App/Integrations"
     }
   },
   "footer": {
@@ -101,7 +101,7 @@
   "topbarLinks": [],
   "topbarCtaButton": {
     "name": "Dashboard",
-    "url": "https://gpt.nexus"
+    "url": "https://gpt.nexus/App"
   },
   "analytics": {
     "plausible": {

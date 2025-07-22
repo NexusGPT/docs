@@ -10,6 +10,7 @@ The Nexus API uses API keys to authenticate requests. This guide covers everythi
 ## API Key Overview
 
 API keys are JWT (JSON Web Token) based credentials that:
+
 - Uniquely identify your integration
 - Contain your organization and agent information
 - Can be revoked or regenerated at any time
@@ -29,8 +30,8 @@ API keys are JWT (JSON Web Token) based credentials that:
   <Step title="Configure Integration">
     - Give your integration a descriptive name
     - Select the AI agent to connect
-    - Choose appropriate permissions
     - Click **Create Integration**
+
   </Step>
   
   <Step title="Generate Key">
@@ -60,14 +61,14 @@ api-key: YOUR_API_KEY
 
 ```javascript Node.js
 const headers = {
-  'Content-Type': 'application/json',
-  'api-key': process.env.NEXUS_API_KEY
+  "Content-Type": "application/json",
+  "api-key": process.env.NEXUS_API_KEY,
 };
 
-const response = await fetch('https://api.nexusgpt.io/api/public/thread', {
-  method: 'POST',
+const response = await fetch("https://api.nexusgpt.io/api/public/thread", {
+  method: "POST",
   headers: headers,
-  body: JSON.stringify({ message: 'Hello' })
+  body: JSON.stringify({ message: "Hello" }),
 });
 ```
 
@@ -106,17 +107,17 @@ import (
 
 func main() {
     client := &http.Client{}
-    
+
     data := map[string]string{"message": "Hello"}
     jsonData, _ := json.Marshal(data)
-    
-    req, _ := http.NewRequest("POST", 
-        "https://api.nexusgpt.io/api/public/thread", 
+
+    req, _ := http.NewRequest("POST",
+        "https://api.nexusgpt.io/api/public/thread",
         bytes.NewBuffer(jsonData))
-    
+
     req.Header.Set("Content-Type", "application/json")
     req.Header.Set("api-key", os.Getenv("NEXUS_API_KEY"))
-    
+
     resp, _ := client.Do(req)
     defer resp.Body.Close()
 }
@@ -132,7 +133,7 @@ Never hardcode API keys in your source code. Use environment variables:
 
 ```javascript
 // ❌ Bad
-const apiKey = 'nxs_abc123...';
+const apiKey = "nxs_abc123...";
 
 // ✅ Good
 const apiKey = process.env.NEXUS_API_KEY;
@@ -141,7 +142,8 @@ const apiKey = process.env.NEXUS_API_KEY;
 ### 2. Server-Side Only
 
 <Warning>
-Never expose API keys in client-side code, mobile apps, or anywhere accessible to end users.
+  Never expose API keys in client-side code, mobile apps, or anywhere accessible
+  to end users.
 </Warning>
 
 Always make API calls from your backend:
@@ -149,13 +151,13 @@ Always make API calls from your backend:
 ```javascript
 // ❌ Bad: Client-side code
 // This exposes your API key to anyone who views the source
-fetch('https://api.nexusgpt.io/api/public/thread', {
-  headers: { 'api-key': 'nxs_abc123...' }
+fetch("https://api.nexusgpt.io/api/public/thread", {
+  headers: { "api-key": "nxs_abc123..." },
 });
 
 // ✅ Good: Server-side proxy
 // Client calls your backend, which then calls Nexus API
-app.post('/api/chat', async (req, res) => {
+app.post("/api/chat", async (req, res) => {
   const response = await callNexusAPI(req.body.message);
   res.json(response);
 });
@@ -170,16 +172,10 @@ Regularly rotate your API keys to maintain security:
 3. Verify the new key is working
 4. Revoke the old key
 
-### 4. Restrict Permissions
-
-When creating integrations, only grant the minimum permissions required:
-- Read-only access for analytics
-- Write access only for agents that need to send messages
-- Admin access only when absolutely necessary
-
-### 5. Monitor Usage
+### 4. Monitor Usage
 
 Regularly review your API usage to detect any unusual activity:
+
 - Check request patterns
 - Monitor rate limit hits
 - Review error logs
@@ -190,11 +186,13 @@ Regularly review your API usage to detect any unusual activity:
 ### 401 Unauthorized
 
 This error occurs when:
+
 - API key is missing from headers
 - API key is invalid or malformed
 - API key has been revoked
 
 **Example Response:**
+
 ```json
 {
   "statusCode": 401,
@@ -204,6 +202,7 @@ This error occurs when:
 ```
 
 **Solution:**
+
 1. Verify the API key is included in headers
 2. Check the key hasn't been revoked
 3. Ensure no extra spaces or characters
@@ -212,11 +211,13 @@ This error occurs when:
 ### 403 Forbidden
 
 This error occurs when:
+
 - API key lacks required permissions
 - Integration is disabled
 - Agent access is restricted
 
 **Example Response:**
+
 ```json
 {
   "statusCode": 403,
@@ -226,6 +227,7 @@ This error occurs when:
 ```
 
 **Solution:**
+
 1. Check integration permissions
 2. Verify agent is active
 3. Contact support if issues persist
@@ -235,6 +237,7 @@ This error occurs when:
 ### Viewing Keys
 
 You can view your API keys in the dashboard:
+
 1. Navigate to **Integrations**
 2. Click on your integration
 3. View key metadata (not the full key)
@@ -242,6 +245,7 @@ You can view your API keys in the dashboard:
 ### Revoking Keys
 
 To revoke a compromised key:
+
 1. Go to your integration settings
 2. Click **Revoke Key**
 3. Generate a new key immediately
@@ -250,6 +254,7 @@ To revoke a compromised key:
 ### Multiple Keys
 
 You can have multiple API keys for different environments:
+
 - Development key with limited rate limits
 - Staging key for testing
 - Production key with full access
@@ -259,6 +264,7 @@ You can have multiple API keys for different environments:
 ### JWT Claims
 
 Your API key is a JWT containing:
+
 ```json
 {
   "integrationId": "int_abc123",
@@ -272,6 +278,7 @@ Your API key is a JWT containing:
 ### Custom Headers
 
 For additional security, you can include custom headers:
+
 ```http
 api-key: YOUR_API_KEY
 X-Request-ID: unique-request-id
@@ -284,24 +291,20 @@ X-Client-Version: 1.0.0
 
 <AccordionGroup>
   <Accordion title="API key not working">
-    1. Verify the key is copied correctly
-    2. Check for extra spaces or line breaks
-    3. Ensure the key hasn't expired
-    4. Confirm the integration is active
+    1. Verify the key is copied correctly 2. Check for extra spaces or line
+    breaks 3. Ensure the key hasn't expired 4. Confirm the integration is active
   </Accordion>
-  
-  <Accordion title="Getting 401 errors">
-    1. Check header name is exactly `api-key`
-    2. Verify the key format
-    3. Ensure no "Bearer" prefix
-    4. Test with a fresh key
-  </Accordion>
-  
+
+{" "}
+
+<Accordion title="Getting 401 errors">
+  1. Check header name is exactly `api-key` 2. Verify the key format 3. Ensure
+  no "Bearer" prefix 4. Test with a fresh key
+</Accordion>
+
   <Accordion title="Intermittent authentication failures">
-    1. Check for rate limiting
-    2. Verify server time sync
-    3. Review network connectivity
-    4. Monitor for key rotation issues
+    1. Check for rate limiting 2. Verify server time sync 3. Review network
+    connectivity 4. Monitor for key rotation issues
   </Accordion>
 </AccordionGroup>
 
@@ -313,7 +316,7 @@ Now that you understand authentication, you're ready to:
   <Card title="Make Your First Call" icon="rocket" href="/quickstart">
     Follow our quickstart guide
   </Card>
-  
+
   <Card title="Explore Endpoints" icon="code" href="/api-reference">
     Learn about available API endpoints
   </Card>
