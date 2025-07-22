@@ -1,0 +1,390 @@
+---
+title: Get Session
+api: GET https://api.nexusgpt.io/api/public/thread/{id}
+description: Retrieve information about a specific chat session
+---
+
+# Get Session
+
+Retrieves detailed information about a specific chat session, including its status, topic, and metadata.
+
+## Endpoint
+
+```
+GET https://api.nexusgpt.io/api/public/thread/{id}
+```
+
+## Authentication
+
+<ParamField header="api-key" type="string" required>
+  Your Nexus API key for authentication
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the session to retrieve
+</ParamField>
+
+<ResponseExample>
+```json Success Response
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "topic": "Order Support - #12345",
+  "status": "ACTIVE",
+  "createdAt": "2024-01-20T10:30:00Z",
+  "lastMessageAt": "2024-01-20T10:45:30Z",
+  "messageCount": 8,
+  "metadata": {
+    "agentId": "agt_abc123",
+    "integrationId": "int_xyz789"
+  }
+}
+```
+</ResponseExample>
+
+## Response Fields
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for the session
+</ResponseField>
+
+<ResponseField name="topic" type="string">
+  Auto-generated topic based on the conversation content. May be null for new sessions.
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Current status of the session
+  - `ACTIVE` - Session is active and can receive messages
+  - `EXPIRED` - Session has expired due to inactivity
+  - `CLOSED` - Session was manually closed
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp of when the session was created
+</ResponseField>
+
+<ResponseField name="lastMessageAt" type="string">
+  ISO 8601 timestamp of the most recent message in the session
+</ResponseField>
+
+<ResponseField name="messageCount" type="number">
+  Total number of messages in the conversation
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Additional metadata about the session
+  
+  <Expandable title="metadata properties">
+    <ResponseField name="agentId" type="string">
+      ID of the AI agent handling this session
+    </ResponseField>
+    
+    <ResponseField name="integrationId" type="string">
+      ID of the integration used to create this session
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Usage
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET https://api.nexusgpt.io/api/public/thread/550e8400-e29b-41d4-a716-446655440000 \
+  -H "api-key: YOUR_API_KEY"
+```
+
+```javascript Node.js
+const axios = require('axios');
+
+async function getSession(sessionId) {
+  try {
+    const response = await axios.get(
+      `https://api.nexusgpt.io/api/public/thread/${sessionId}`,
+      {
+        headers: {
+          'api-key': process.env.NEXUS_API_KEY
+        }
+      }
+    );
+    
+    const session = response.data;
+    console.log(`Session Status: ${session.status}`);
+    console.log(`Topic: ${session.topic || 'No topic yet'}`);
+    console.log(`Messages: ${session.messageCount}`);
+    
+    return session;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      console.error('Session not found');
+    } else {
+      console.error('Error fetching session:', error.response?.data);
+    }
+    throw error;
+  }
+}
+
+// Get session information
+const session = await getSession('550e8400-e29b-41d4-a716-446655440000');
+```
+
+```python Python
+import os
+import requests
+from datetime import datetime
+
+def get_session(session_id):
+    """Get information about a specific session"""
+    url = f"https://api.nexusgpt.io/api/public/thread/{session_id}"
+    
+    headers = {
+        "api-key": os.environ.get("NEXUS_API_KEY")
+    }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        
+        session = response.json()
+        print(f"Session Status: {session['status']}")
+        print(f"Topic: {session.get('topic', 'No topic yet')}")
+        print(f"Messages: {session.get('messageCount', 0)}")
+        
+        # Calculate session age
+        created = datetime.fromisoformat(session['createdAt'].replace('Z', '+00:00'))
+        age = datetime.now(created.tzinfo) - created
+        print(f"Session Age: {age}")
+        
+        return session
+        
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            print("Session not found")
+        else:
+            print(f"Error fetching session: {e}")
+        raise
+
+# Get session information
+session = get_session('550e8400-e29b-41d4-a716-446655440000')
+```
+
+```go Go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+    "time"
+)
+
+type Session struct {
+    ID            string    `json:"id"`
+    Topic         string    `json:"topic"`
+    Status        string    `json:"status"`
+    CreatedAt     time.Time `json:"createdAt"`
+    LastMessageAt time.Time `json:"lastMessageAt"`
+    MessageCount  int       `json:"messageCount"`
+    Metadata      struct {
+        AgentID       string `json:"agentId"`
+        IntegrationID string `json:"integrationId"`
+    } `json:"metadata"`
+}
+
+func getSession(sessionID string) (*Session, error) {
+    url := fmt.Sprintf("https://api.nexusgpt.io/api/public/thread/%s", sessionID)
+    
+    req, err := http.NewRequest("GET", url, nil)
+    if err != nil {
+        return nil, err
+    }
+    
+    req.Header.Set("api-key", os.Getenv("NEXUS_API_KEY"))
+    
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+    
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+    
+    if resp.StatusCode == http.StatusNotFound {
+        return nil, fmt.Errorf("session not found")
+    }
+    
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("API error: %s", string(body))
+    }
+    
+    var session Session
+    if err := json.Unmarshal(body, &session); err != nil {
+        return nil, err
+    }
+    
+    fmt.Printf("Session Status: %s\n", session.Status)
+    fmt.Printf("Topic: %s\n", session.Topic)
+    fmt.Printf("Messages: %d\n", session.MessageCount)
+    
+    // Calculate session age
+    age := time.Since(session.CreatedAt)
+    fmt.Printf("Session Age: %s\n", age)
+    
+    return &session, nil
+}
+```
+
+</CodeGroup>
+
+## Common Use Cases
+
+### 1. Session Health Check
+```javascript
+async function isSessionActive(sessionId) {
+  try {
+    const session = await getSession(sessionId);
+    return session.status === 'ACTIVE';
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return false;
+    }
+    throw error;
+  }
+}
+```
+
+### 2. Session Monitoring
+```javascript
+async function monitorSession(sessionId) {
+  const session = await getSession(sessionId);
+  
+  // Check if session is stale
+  const lastMessageTime = new Date(session.lastMessageAt);
+  const timeSinceLastMessage = Date.now() - lastMessageTime.getTime();
+  const isStale = timeSinceLastMessage > 30 * 60 * 1000; // 30 minutes
+  
+  return {
+    id: session.id,
+    isActive: session.status === 'ACTIVE',
+    isStale,
+    messageCount: session.messageCount,
+    topic: session.topic
+  };
+}
+```
+
+### 3. Session Analytics
+```javascript
+async function getSessionAnalytics(sessionIds) {
+  const analytics = {
+    total: sessionIds.length,
+    active: 0,
+    expired: 0,
+    avgMessageCount: 0,
+    topics: []
+  };
+  
+  let totalMessages = 0;
+  
+  for (const id of sessionIds) {
+    try {
+      const session = await getSession(id);
+      
+      if (session.status === 'ACTIVE') analytics.active++;
+      if (session.status === 'EXPIRED') analytics.expired++;
+      
+      totalMessages += session.messageCount;
+      if (session.topic) analytics.topics.push(session.topic);
+      
+    } catch (error) {
+      // Handle errors (e.g., deleted sessions)
+    }
+  }
+  
+  analytics.avgMessageCount = totalMessages / sessionIds.length;
+  return analytics;
+}
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 404 Not Found
+{
+  "statusCode": 404,
+  "message": "Session not found",
+  "error": "Not Found"
+}
+```
+
+```json 401 Unauthorized
+{
+  "statusCode": 401,
+  "message": "Invalid API key",
+  "error": "Unauthorized"
+}
+```
+
+```json 400 Bad Request
+{
+  "statusCode": 400,
+  "message": "Invalid session ID format",
+  "error": "Bad Request"
+}
+```
+</ResponseExample>
+
+## Session Lifecycle
+
+<Steps>
+  <Step title="Creation">
+    Session is created with status `ACTIVE`
+  </Step>
+  
+  <Step title="Active Period">
+    Session remains active for 24 hours after the last message
+  </Step>
+  
+  <Step title="Expiration Warning">
+    Sessions nearing expiration can be extended by sending a new message
+  </Step>
+  
+  <Step title="Expiration">
+    After 24 hours of inactivity, status changes to `EXPIRED`
+  </Step>
+</Steps>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Caching">
+    - Cache session information to reduce API calls
+    - Invalidate cache when sending new messages
+    - Set appropriate TTL based on your use case
+  </Accordion>
+  
+  <Accordion title="Error Handling">
+    - Handle 404 errors gracefully
+    - Don't retry 404 errors
+    - Log session IDs for debugging
+  </Accordion>
+  
+  <Accordion title="Monitoring">
+    - Periodically check session status
+    - Alert on unexpected session expiration
+    - Track session metrics for optimization
+  </Accordion>
+</AccordionGroup>
+
+## Related Endpoints
+
+- [Create Session](/api-reference/nexus-endpoints/create-session) - Create a new chat session
+- [Send Message](/api-reference/nexus-endpoints/send-message) - Send messages to the session
+- [List Messages](/api-reference/nexus-endpoints/list-messages) - Get conversation history

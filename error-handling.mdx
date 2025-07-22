@@ -1,0 +1,542 @@
+---
+title: Error Handling
+description: Comprehensive guide to handling errors in the Nexus API
+---
+
+# Error Handling
+
+This guide covers all possible errors you might encounter when using the Nexus API and provides best practices for handling them gracefully in your applications.
+
+## Error Response Format
+
+All API errors follow a consistent format to make error handling predictable:
+
+```json
+{
+  "statusCode": 400,
+  "message": "Detailed error message explaining what went wrong",
+  "error": "Bad Request"
+}
+```
+
+## HTTP Status Codes
+
+The Nexus API uses standard HTTP status codes to indicate the success or failure of requests:
+
+| Status Code | Meaning | Description |
+|-------------|---------|-------------|
+| 200 | Success | Request completed successfully |
+| 400 | Bad Request | Invalid request parameters or malformed request body |
+| 401 | Unauthorized | Missing or invalid API key |
+| 403 | Forbidden | Valid API key but insufficient permissions |
+| 404 | Not Found | Resource not found (e.g., session doesn't exist) |
+| 413 | Payload Too Large | Request body exceeds size limits |
+| 429 | Too Many Requests | Rate limit exceeded |
+| 500 | Internal Server Error | Unexpected server error |
+| 503 | Service Unavailable | Temporary service outage |
+
+## Common Error Scenarios
+
+### Authentication Errors (401)
+
+<CodeGroup>
+
+```javascript Node.js
+// Handling authentication errors
+async function makeAuthenticatedRequest() {
+  try {
+    const response = await axios.post(url, data, {
+      headers: { 'api-key': apiKey }
+    });
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 401) {
+      console.error('Authentication failed:', error.response.data.message);
+      
+      // Possible actions:
+      // 1. Check if API key is correctly set
+      // 2. Verify key hasn't been revoked
+      // 3. Regenerate key if necessary
+      // 4. Alert user to update their credentials
+      
+      throw new Error('Please check your API key configuration');
+    }
+    throw error;
+  }
+}
+```
+
+```python Python
+import requests
+from requests.exceptions import HTTPError
+
+def make_authenticated_request():
+    try:
+        response = requests.post(url, json=data, headers={'api-key': api_key})
+        response.raise_for_status()
+        return response.json()
+    except HTTPError as e:
+        if e.response.status_code == 401:
+            print(f"Authentication failed: {e.response.json()['message']}")
+            
+            # Possible actions:
+            # 1. Check environment variables
+            # 2. Prompt for new API key
+            # 3. Log the error for debugging
+            
+            raise Exception("Please check your API key configuration")
+        raise
+```
+
+</CodeGroup>
+
+### Session Not Found (404)
+
+<CodeGroup>
+
+```javascript Node.js
+// Handling session not found errors
+async function sendMessageWithRecovery(sessionId, message) {
+  try {
+    await sendMessage(sessionId, message);
+  } catch (error) {
+    if (error.response?.status === 404) {
+      console.log('Session not found, creating new session...');
+      
+      // Create a new session
+      const newSession = await createSession();
+      
+      // Retry with new session
+      await sendMessage(newSession.id, message);
+      
+      // Update stored session ID
+      updateStoredSessionId(newSession.id);
+    } else {
+      throw error;
+    }
+  }
+}
+```
+
+```python Python
+async def send_message_with_recovery(session_id, message):
+    try:
+        await send_message(session_id, message)
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            print("Session not found, creating new session...")
+            
+            # Create a new session
+            new_session = await create_session()
+            
+            # Retry with new session
+            await send_message(new_session['id'], message)
+            
+            # Update stored session ID
+            update_stored_session_id(new_session['id'])
+        else:
+            raise
+```
+
+</CodeGroup>
+
+### Rate Limiting (429)
+
+<CodeGroup>
+
+```javascript Node.js
+// Implementing exponential backoff for rate limits
+async function makeRequestWithRetry(requestFn, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await requestFn();
+    } catch (error) {
+      if (error.response?.status === 429) {
+        const retryAfter = error.response.headers['retry-after'] || Math.pow(2, i);
+        console.log(`Rate limited. Retrying after ${retryAfter} seconds...`);
+        
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error('Max retries exceeded');
+}
+
+// Usage
+const result = await makeRequestWithRetry(() => 
+  sendMessage(sessionId, message)
+);
+```
+
+```python Python
+import time
+import random
+
+def make_request_with_retry(request_fn, max_retries=3):
+    """Make request with exponential backoff for rate limits"""
+    for i in range(max_retries):
+        try:
+            return request_fn()
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 429:
+                # Check for Retry-After header
+                retry_after = e.response.headers.get('Retry-After')
+                if retry_after:
+                    wait_time = int(retry_after)
+                else:
+                    # Exponential backoff with jitter
+                    wait_time = (2 ** i) + random.uniform(0, 1)
+                
+                print(f"Rate limited. Retrying after {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            raise
+    
+    raise Exception("Max retries exceeded")
+
+# Usage
+result = make_request_with_retry(
+    lambda: send_message(session_id, message)
+)
+```
+
+</CodeGroup>
+
+### Validation Errors (400)
+
+<CodeGroup>
+
+```javascript Node.js
+// Handling validation errors with detailed feedback
+async function sendValidatedMessage(sessionId, message) {
+  // Client-side validation
+  if (!message || message.trim().length === 0) {
+    throw new Error('Message cannot be empty');
+  }
+  
+  if (message.length > 4000) {
+    throw new Error('Message exceeds maximum length of 4000 characters');
+  }
+  
+  try {
+    await sendMessage(sessionId, message);
+  } catch (error) {
+    if (error.response?.status === 400) {
+      const errorMessage = error.response.data.message;
+      
+      // Parse specific validation errors
+      if (errorMessage.includes('session ID')) {
+        throw new Error('Invalid session ID format');
+      } else if (errorMessage.includes('message')) {
+        throw new Error('Invalid message format');
+      }
+      
+      throw new Error(`Validation error: ${errorMessage}`);
+    }
+    throw error;
+  }
+}
+```
+
+```python Python
+def send_validated_message(session_id, message):
+    """Send message with client-side validation"""
+    # Client-side validation
+    if not message or not message.strip():
+        raise ValueError("Message cannot be empty")
+    
+    if len(message) > 4000:
+        raise ValueError("Message exceeds maximum length of 4000 characters")
+    
+    try:
+        send_message(session_id, message)
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 400:
+            error_message = e.response.json().get('message', '')
+            
+            # Parse specific validation errors
+            if 'session ID' in error_message:
+                raise ValueError("Invalid session ID format")
+            elif 'message' in error_message:
+                raise ValueError("Invalid message format")
+            
+            raise ValueError(f"Validation error: {error_message}")
+        raise
+```
+
+</CodeGroup>
+
+## Error Recovery Strategies
+
+### 1. Circuit Breaker Pattern
+
+```javascript
+class CircuitBreaker {
+  constructor(threshold = 5, timeout = 60000) {
+    this.failureCount = 0;
+    this.threshold = threshold;
+    this.timeout = timeout;
+    this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
+    this.nextAttempt = null;
+  }
+
+  async execute(operation) {
+    if (this.state === 'OPEN') {
+      if (Date.now() < this.nextAttempt) {
+        throw new Error('Circuit breaker is OPEN');
+      }
+      this.state = 'HALF_OPEN';
+    }
+
+    try {
+      const result = await operation();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure();
+      throw error;
+    }
+  }
+
+  onSuccess() {
+    this.failureCount = 0;
+    this.state = 'CLOSED';
+  }
+
+  onFailure() {
+    this.failureCount++;
+    if (this.failureCount >= this.threshold) {
+      this.state = 'OPEN';
+      this.nextAttempt = Date.now() + this.timeout;
+    }
+  }
+}
+
+// Usage
+const breaker = new CircuitBreaker();
+try {
+  const result = await breaker.execute(() => sendMessage(sessionId, message));
+} catch (error) {
+  console.error('Operation failed:', error);
+}
+```
+
+### 2. Fallback Mechanisms
+
+```javascript
+async function sendMessageWithFallback(sessionId, message) {
+  try {
+    // Try primary method
+    return await sendMessage(sessionId, message);
+  } catch (error) {
+    if (error.response?.status === 503) {
+      // Service unavailable - try fallback
+      console.log('Primary service unavailable, using fallback...');
+      
+      // Options:
+      // 1. Queue message for later delivery
+      await queueMessage(sessionId, message);
+      
+      // 2. Use alternative endpoint/service
+      // return await sendMessageAlternative(sessionId, message);
+      
+      // 3. Return cached response
+      // return getCachedResponse(message);
+      
+      return { 
+        success: true, 
+        queued: true,
+        message: 'Message queued for delivery' 
+      };
+    }
+    throw error;
+  }
+}
+```
+
+### 3. Graceful Degradation
+
+```javascript
+class NexusClientWithDegradation {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+    this.degraded = false;
+    this.cache = new Map();
+  }
+
+  async sendMessage(sessionId, message) {
+    if (this.degraded) {
+      // Operating in degraded mode
+      return this.handleDegradedMode(sessionId, message);
+    }
+
+    try {
+      const response = await this.makeRequest(sessionId, message);
+      this.cache.set(message, response);
+      return response;
+    } catch (error) {
+      if (error.response?.status >= 500) {
+        // Server error - enter degraded mode
+        this.degraded = true;
+        setTimeout(() => { this.degraded = false; }, 300000); // 5 minutes
+        
+        return this.handleDegradedMode(sessionId, message);
+      }
+      throw error;
+    }
+  }
+
+  handleDegradedMode(sessionId, message) {
+    // Check cache for similar messages
+    const cachedResponse = this.findCachedResponse(message);
+    if (cachedResponse) {
+      return { ...cachedResponse, fromCache: true };
+    }
+
+    // Return generic response
+    return {
+      success: true,
+      degraded: true,
+      message: 'Service is temporarily limited. Your message has been recorded.'
+    };
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="1. Always Handle Errors Explicitly">
+    - Never ignore errors or use empty catch blocks
+    - Log errors with context for debugging
+    - Provide meaningful error messages to users
+    - Distinguish between recoverable and non-recoverable errors
+  </Accordion>
+  
+  <Accordion title="2. Implement Retry Logic">
+    - Use exponential backoff for transient failures
+    - Set reasonable retry limits
+    - Add jitter to prevent thundering herd
+    - Respect Retry-After headers
+  </Accordion>
+  
+  <Accordion title="3. Client-Side Validation">
+    - Validate inputs before making API calls
+    - Check message length limits
+    - Verify session ID format
+    - Sanitize user inputs
+  </Accordion>
+  
+  <Accordion title="4. Monitor and Alert">
+    - Track error rates and patterns
+    - Set up alerts for error spikes
+    - Monitor specific error codes
+    - Use error tracking services
+  </Accordion>
+  
+  <Accordion title="5. User Experience">
+    - Show user-friendly error messages
+    - Provide actionable next steps
+    - Offer retry options when appropriate
+    - Maintain application state during errors
+  </Accordion>
+</AccordionGroup>
+
+## Error Monitoring
+
+```javascript
+// Example error monitoring integration
+class ErrorMonitor {
+  constructor(service) {
+    this.service = service; // e.g., Sentry, DataDog, etc.
+  }
+
+  logError(error, context) {
+    const errorInfo = {
+      message: error.message,
+      code: error.response?.status,
+      endpoint: context.endpoint,
+      sessionId: context.sessionId,
+      timestamp: new Date().toISOString(),
+      apiResponse: error.response?.data,
+      stack: error.stack
+    };
+
+    // Log to monitoring service
+    this.service.captureException(error, {
+      extra: errorInfo,
+      tags: {
+        api_version: 'v1',
+        error_type: this.categorizeError(error)
+      }
+    });
+
+    // Also log locally for debugging
+    console.error('API Error:', errorInfo);
+  }
+
+  categorizeError(error) {
+    const status = error.response?.status;
+    if (status >= 500) return 'server_error';
+    if (status === 429) return 'rate_limit';
+    if (status === 401) return 'auth_error';
+    if (status === 404) return 'not_found';
+    if (status >= 400) return 'client_error';
+    return 'unknown';
+  }
+}
+```
+
+## Testing Error Scenarios
+
+```javascript
+// Example test cases for error handling
+describe('Error Handling', () => {
+  it('should handle 401 authentication errors', async () => {
+    const client = new NexusClient('invalid_key');
+    
+    await expect(client.createSession())
+      .rejects
+      .toThrow('Authentication failed');
+  });
+
+  it('should retry on rate limit errors', async () => {
+    const client = new NexusClient(validKey);
+    
+    // Mock rate limit response
+    mockApiResponse(429, { message: 'Rate limit exceeded' });
+    
+    const start = Date.now();
+    await client.sendMessageWithRetry('test');
+    const duration = Date.now() - start;
+    
+    expect(duration).toBeGreaterThan(1000); // Should have delayed
+  });
+
+  it('should handle session not found gracefully', async () => {
+    const client = new NexusClient(validKey);
+    
+    // Mock 404 response
+    mockApiResponse(404, { message: 'Session not found' });
+    
+    const result = await client.sendMessageWithRecovery('old_session', 'test');
+    expect(result.newSession).toBe(true);
+  });
+});
+```
+
+## Next Steps
+
+Now that you understand error handling, explore:
+
+<CardGroup cols={2}>
+  <Card title="Rate Limiting" icon="gauge" href="/rate-limiting">
+    Learn about rate limits and optimization
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/best-practices">
+    Production-ready patterns and guidelines
+  </Card>
+</CardGroup>

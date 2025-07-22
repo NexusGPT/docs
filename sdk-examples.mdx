@@ -1,0 +1,2102 @@
+---
+title: SDK Examples
+description: Complete code examples for integrating Nexus API in various languages
+---
+
+# SDK Examples
+
+This guide provides complete, production-ready examples for integrating the Nexus API in popular programming languages. Each example includes error handling, best practices, and common use cases.
+
+## JavaScript/TypeScript
+
+### Installation
+
+```bash npm
+npm install axios dotenv
+# For TypeScript
+npm install --save-dev @types/node
+```
+
+### Complete SDK Implementation
+
+```typescript TypeScript
+import axios, { AxiosInstance, AxiosError } from 'axios';
+
+interface SessionResponse {
+  id: string;
+  createdAt: string;
+}
+
+interface Message {
+  id: string;
+  type: 'user' | 'assistant' | 'tool' | 'system';
+  content: string;
+  createdAt: string;
+  toolCallId?: string;
+  metadata?: Record<string, any>;
+}
+
+interface SendMessageResponse {
+  success: boolean;
+}
+
+interface SessionInfo {
+  id: string;
+  topic?: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'CLOSED';
+  createdAt: string;
+  lastMessageAt?: string;
+  messageCount?: number;
+  metadata?: {
+    agentId?: string;
+    integrationId?: string;
+  };
+}
+
+export class NexusClient {
+  private client: AxiosInstance;
+  private sessionId?: string;
+
+  constructor(apiKey: string, baseUrl: string = 'https://api.nexusgpt.io/api/public') {
+    this.client = axios.create({
+      baseURL: baseUrl,
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000
+    });
+
+    // Add response interceptor for error handling
+    this.client.interceptors.response.use(
+      response => response,
+      this.handleError
+    );
+  }
+
+  /**
+   * Create a new chat session
+   */
+  async createSession(initialMessage?: string): Promise<SessionResponse> {
+    const response = await this.client.post<SessionResponse>('/thread', {
+      message: initialMessage
+    });
+    
+    this.sessionId = response.data.id;
+    return response.data;
+  }
+
+  /**
+   * Send a message to the current session
+   */
+  async sendMessage(message: string, sessionId?: string): Promise<void> {
+    const id = sessionId || this.sessionId;
+    if (!id) {
+      throw new Error('No session ID available. Create a session first.');
+    }
+
+    await this.client.post<SendMessageResponse>(`/thread/${id}/messages`, {
+      message
+    });
+  }
+
+  /**
+   * Get session information
+   */
+  async getSession(sessionId?: string): Promise<SessionInfo> {
+    const id = sessionId || this.sessionId;
+    if (!id) {
+      throw new Error('No session ID available. Create a session first.');
+    }
+
+    const response = await this.client.get<SessionInfo>(`/thread/${id}`);
+    return response.data;
+  }
+
+  /**
+   * List messages with pagination
+   */
+  async listMessages(options: {
+    sessionId?: string;
+    limit?: number;
+    order?: 'asc' | 'desc';
+    after?: string;
+    before?: string;
+  } = {}): Promise<Message[]> {
+    const id = options.sessionId || this.sessionId;
+    if (!id) {
+      throw new Error('No session ID available. Create a session first.');
+    }
+
+    const response = await this.client.get<Message[]>(`/thread/${id}/messages`, {
+      params: {
+        limit: options.limit || 20,
+        order: options.order || 'asc',
+        after: options.after,
+        before: options.before
+      }
+    });
+
+    return response.data;
+  }
+
+  /**
+   * Get all messages from a session
+   */
+  async getAllMessages(sessionId?: string): Promise<Message[]> {
+    const id = sessionId || this.sessionId;
+    const allMessages: Message[] = [];
+    let after: string | undefined;
+
+    while (true) {
+      const messages = await this.listMessages({
+        sessionId: id,
+        limit: 100,
+        order: 'asc',
+        after
+      });
+
+      if (messages.length === 0) break;
+
+      allMessages.push(...messages);
+      after = messages[messages.length - 1].id;
+
+      if (messages.length < 100) break;
+    }
+
+    return allMessages;
+  }
+
+  /**
+   * Send a message and wait for response
+   */
+  async sendAndWaitForResponse(
+    message: string,
+    sessionId?: string,
+    timeoutMs: number = 30000
+  ): Promise<Message> {
+    const id = sessionId || this.sessionId;
+    
+    // Get the last message before sending
+    const messagesBefore = await this.listMessages({
+      sessionId: id,
+      limit: 1,
+      order: 'desc'
+    });
+    
+    const lastMessageTime = messagesBefore[0]?.createdAt || new Date().toISOString();
+    
+    // Send the message
+    await this.sendMessage(message, id);
+    
+    // Poll for response
+    const startTime = Date.now();
+    const pollInterval = 1000;
+    
+    while (Date.now() - startTime < timeoutMs) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      
+      const newMessages = await this.listMessages({
+        sessionId: id,
+        limit: 5,
+        order: 'desc'
+      });
+      
+      const assistantMessage = newMessages.find(
+        msg => msg.type === 'assistant' && 
+        new Date(msg.createdAt) > new Date(lastMessageTime)
+      );
+      
+      if (assistantMessage) {
+        return assistantMessage;
+      }
+    }
+    
+    throw new Error('Timeout waiting for response');
+  }
+
+  /**
+   * Get current session ID
+   */
+  getCurrentSessionId(): string | undefined {
+    return this.sessionId;
+  }
+
+  /**
+   * Set current session ID
+   */
+  setCurrentSessionId(sessionId: string): void {
+    this.sessionId = sessionId;
+  }
+
+  /**
+   * Error handler
+   */
+  private handleError(error: AxiosError): Promise<never> {
+    if (error.response) {
+      const { status, data } = error.response;
+      const message = (data as any)?.message || 'Unknown error';
+      
+      switch (status) {
+        case 401:
+          throw new Error(`Authentication failed: ${message}`);
+        case 404:
+          throw new Error(`Resource not found: ${message}`);
+        case 429:
+          throw new Error(`Rate limit exceeded: ${message}`);
+        default:
+          throw new Error(`API error (${status}): ${message}`);
+      }
+    } else if (error.request) {
+      throw new Error('Network error: No response from server');
+    } else {
+      throw new Error(`Request error: ${error.message}`);
+    }
+  }
+}
+
+// Example usage
+async function main() {
+  const client = new NexusClient(process.env.NEXUS_API_KEY!);
+  
+  try {
+    // Create a session
+    const session = await client.createSession('Hello! I need help with my order.');
+    console.log('Session created:', session.id);
+    
+    // Send and wait for response
+    const response = await client.sendAndWaitForResponse(
+      'My order number is #12345'
+    );
+    console.log('Assistant:', response.content);
+    
+    // Get all messages
+    const messages = await client.getAllMessages();
+    console.log(`Total messages: ${messages.length}`);
+    
+  } catch (error) {
+    console.error('Error:', error);
+  }
+}
+```
+
+## Python
+
+### Installation
+
+```bash
+pip install requests python-dotenv typing-extensions
+```
+
+### Complete SDK Implementation
+
+```python Python
+import os
+import time
+import requests
+from typing import Optional, List, Dict, Any, Literal
+from datetime import datetime
+from enum import Enum
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class MessageType(Enum):
+    USER = "user"
+    ASSISTANT = "assistant"
+    TOOL = "tool"
+    SYSTEM = "system"
+
+
+class SessionStatus(Enum):
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    CLOSED = "CLOSED"
+
+
+class NexusError(Exception):
+    """Base exception for Nexus API errors"""
+    pass
+
+
+class AuthenticationError(NexusError):
+    """Raised when authentication fails"""
+    pass
+
+
+class RateLimitError(NexusError):
+    """Raised when rate limit is exceeded"""
+    pass
+
+
+class SessionNotFoundError(NexusError):
+    """Raised when session is not found"""
+    pass
+
+
+class NexusClient:
+    """
+    Nexus API client for Python
+    
+    Example:
+        client = NexusClient(api_key="your_api_key")
+        session = client.create_session("Hello!")
+        response = client.send_and_wait_for_response("How can you help me?")
+        print(response['content'])
+    """
+    
+    def __init__(
+        self, 
+        api_key: str, 
+        base_url: str = "https://api.nexusgpt.io/api/public",
+        timeout: int = 30
+    ):
+        self.api_key = api_key
+        self.base_url = base_url
+        self.timeout = timeout
+        self.session_id: Optional[str] = None
+        
+        # Create session with retry capability
+        self.session = requests.Session()
+        self.session.headers.update({
+            "api-key": api_key,
+            "Content-Type": "application/json"
+        })
+    
+    def create_session(self, initial_message: Optional[str] = None) -> Dict[str, Any]:
+        """Create a new chat session"""
+        url = f"{self.base_url}/thread"
+        
+        data = {}
+        if initial_message:
+            data["message"] = initial_message
+        
+        response = self._make_request("POST", url, json=data)
+        self.session_id = response["id"]
+        logger.info(f"Created session: {self.session_id}")
+        
+        return response
+    
+    def send_message(self, message: str, session_id: Optional[str] = None) -> None:
+        """Send a message to a session"""
+        sid = session_id or self.session_id
+        if not sid:
+            raise ValueError("No session ID available. Create a session first.")
+        
+        url = f"{self.base_url}/thread/{sid}/messages"
+        self._make_request("POST", url, json={"message": message})
+        logger.info(f"Message sent to session {sid}")
+    
+    def get_session(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Get session information"""
+        sid = session_id or self.session_id
+        if not sid:
+            raise ValueError("No session ID available. Create a session first.")
+        
+        url = f"{self.base_url}/thread/{sid}"
+        return self._make_request("GET", url)
+    
+    def list_messages(
+        self,
+        session_id: Optional[str] = None,
+        limit: int = 20,
+        order: Literal["asc", "desc"] = "asc",
+        after: Optional[str] = None,
+        before: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """List messages from a session with pagination"""
+        sid = session_id or self.session_id
+        if not sid:
+            raise ValueError("No session ID available. Create a session first.")
+        
+        url = f"{self.base_url}/thread/{sid}/messages"
+        params = {
+            "limit": limit,
+            "order": order
+        }
+        
+        if after:
+            params["after"] = after
+        if before:
+            params["before"] = before
+        
+        return self._make_request("GET", url, params=params)
+    
+    def get_all_messages(self, session_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Get all messages from a session"""
+        sid = session_id or self.session_id
+        all_messages = []
+        after = None
+        
+        while True:
+            messages = self.list_messages(
+                session_id=sid,
+                limit=100,
+                order="asc",
+                after=after
+            )
+            
+            if not messages:
+                break
+            
+            all_messages.extend(messages)
+            after = messages[-1]["id"]
+            
+            if len(messages) < 100:
+                break
+        
+        return all_messages
+    
+    def send_and_wait_for_response(
+        self,
+        message: str,
+        session_id: Optional[str] = None,
+        timeout: int = 30,
+        poll_interval: float = 1.0
+    ) -> Dict[str, Any]:
+        """Send a message and wait for assistant response"""
+        sid = session_id or self.session_id
+        
+        # Get last message time before sending
+        messages_before = self.list_messages(sid, limit=1, order="desc")
+        last_message_time = messages_before[0]["createdAt"] if messages_before else datetime.utcnow().isoformat()
+        
+        # Send message
+        self.send_message(message, sid)
+        
+        # Poll for response
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            time.sleep(poll_interval)
+            
+            new_messages = self.list_messages(sid, limit=5, order="desc")
+            
+            for msg in new_messages:
+                if (msg["type"] == MessageType.ASSISTANT.value and 
+                    msg["createdAt"] > last_message_time):
+                    return msg
+        
+        raise TimeoutError(f"Timeout waiting for response after {timeout} seconds")
+    
+    def wait_for_message(
+        self,
+        message_type: MessageType = MessageType.ASSISTANT,
+        session_id: Optional[str] = None,
+        timeout: int = 30,
+        after_message_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Wait for a specific type of message"""
+        sid = session_id or self.session_id
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            messages = self.list_messages(
+                session_id=sid,
+                limit=10,
+                order="desc",
+                after=after_message_id
+            )
+            
+            for msg in messages:
+                if msg["type"] == message_type.value:
+                    return msg
+            
+            time.sleep(1)
+        
+        return None
+    
+    def _make_request(
+        self,
+        method: str,
+        url: str,
+        **kwargs
+    ) -> Any:
+        """Make HTTP request with error handling"""
+        try:
+            response = self.session.request(
+                method,
+                url,
+                timeout=self.timeout,
+                **kwargs
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            
+            self._handle_error(response)
+            
+        except requests.exceptions.Timeout:
+            raise NexusError(f"Request timed out after {self.timeout} seconds")
+        except requests.exceptions.ConnectionError:
+            raise NexusError("Connection error. Please check your network.")
+        except requests.exceptions.RequestException as e:
+            raise NexusError(f"Request failed: {str(e)}")
+    
+    def _handle_error(self, response: requests.Response) -> None:
+        """Handle API error responses"""
+        try:
+            error_data = response.json()
+            message = error_data.get("message", "Unknown error")
+        except:
+            message = response.text or "Unknown error"
+        
+        if response.status_code == 401:
+            raise AuthenticationError(f"Authentication failed: {message}")
+        elif response.status_code == 404:
+            raise SessionNotFoundError(f"Resource not found: {message}")
+        elif response.status_code == 429:
+            raise RateLimitError(f"Rate limit exceeded: {message}")
+        else:
+            raise NexusError(f"API error ({response.status_code}): {message}")
+
+
+# Example usage
+if __name__ == "__main__":
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    # Initialize client
+    client = NexusClient(api_key=os.getenv("NEXUS_API_KEY"))
+    
+    try:
+        # Create session
+        session = client.create_session("Hello! I need help with Python programming.")
+        print(f"Session created: {session['id']}")
+        
+        # Send message and wait for response
+        response = client.send_and_wait_for_response(
+            "Can you show me how to read a CSV file?"
+        )
+        print(f"Assistant: {response['content']}")
+        
+        # Get all messages
+        all_messages = client.get_all_messages()
+        print(f"\nTotal messages: {len(all_messages)}")
+        
+        for msg in all_messages:
+            print(f"{msg['type']}: {msg['content'][:100]}...")
+            
+    except NexusError as e:
+        print(f"Error: {e}")
+```
+
+## Go
+
+### Complete SDK Implementation
+
+```go Go
+package nexus
+
+import (
+    "bytes"
+    "context"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "net/url"
+    "strconv"
+    "time"
+)
+
+// MessageType represents the type of message
+type MessageType string
+
+const (
+    MessageTypeUser      MessageType = "user"
+    MessageTypeAssistant MessageType = "assistant"
+    MessageTypeTool      MessageType = "tool"
+    MessageTypeSystem    MessageType = "system"
+)
+
+// SessionStatus represents the status of a session
+type SessionStatus string
+
+const (
+    SessionStatusActive  SessionStatus = "ACTIVE"
+    SessionStatusExpired SessionStatus = "EXPIRED"
+    SessionStatusClosed  SessionStatus = "CLOSED"
+)
+
+// Client is the Nexus API client
+type Client struct {
+    apiKey     string
+    baseURL    string
+    httpClient *http.Client
+    sessionID  string
+}
+
+// ClientOption is a function that configures the client
+type ClientOption func(*Client)
+
+// WithHTTPClient sets a custom HTTP client
+func WithHTTPClient(client *http.Client) ClientOption {
+    return func(c *Client) {
+        c.httpClient = client
+    }
+}
+
+// WithBaseURL sets a custom base URL
+func WithBaseURL(baseURL string) ClientOption {
+    return func(c *Client) {
+        c.baseURL = baseURL
+    }
+}
+
+// NewClient creates a new Nexus API client
+func NewClient(apiKey string, opts ...ClientOption) *Client {
+    client := &Client{
+        apiKey:  apiKey,
+        baseURL: "https://api.nexusgpt.io/api/public",
+        httpClient: &http.Client{
+            Timeout: 30 * time.Second,
+        },
+    }
+    
+    for _, opt := range opts {
+        opt(client)
+    }
+    
+    return client
+}
+
+// SessionResponse represents the response from creating a session
+type SessionResponse struct {
+    ID        string    `json:"id"`
+    CreatedAt time.Time `json:"createdAt"`
+}
+
+// SessionInfo represents detailed session information
+type SessionInfo struct {
+    ID            string        `json:"id"`
+    Topic         string        `json:"topic,omitempty"`
+    Status        SessionStatus `json:"status"`
+    CreatedAt     time.Time     `json:"createdAt"`
+    LastMessageAt *time.Time    `json:"lastMessageAt,omitempty"`
+    MessageCount  int           `json:"messageCount,omitempty"`
+    Metadata      struct {
+        AgentID       string `json:"agentId,omitempty"`
+        IntegrationID string `json:"integrationId,omitempty"`
+    } `json:"metadata,omitempty"`
+}
+
+// Message represents a chat message
+type Message struct {
+    ID         string                 `json:"id"`
+    Type       MessageType            `json:"type"`
+    Content    string                 `json:"content"`
+    CreatedAt  time.Time              `json:"createdAt"`
+    ToolCallID string                 `json:"toolCallId,omitempty"`
+    Metadata   map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// ListMessagesOptions represents options for listing messages
+type ListMessagesOptions struct {
+    Limit  int
+    Order  string
+    After  string
+    Before string
+}
+
+// CreateSession creates a new chat session
+func (c *Client) CreateSession(ctx context.Context, initialMessage string) (*SessionResponse, error) {
+    payload := map[string]string{}
+    if initialMessage != "" {
+        payload["message"] = initialMessage
+    }
+    
+    var resp SessionResponse
+    if err := c.makeRequest(ctx, "POST", "/thread", payload, &resp); err != nil {
+        return nil, err
+    }
+    
+    c.sessionID = resp.ID
+    return &resp, nil
+}
+
+// SendMessage sends a message to a session
+func (c *Client) SendMessage(ctx context.Context, sessionID, message string) error {
+    if sessionID == "" {
+        sessionID = c.sessionID
+    }
+    if sessionID == "" {
+        return fmt.Errorf("no session ID provided")
+    }
+    
+    payload := map[string]string{"message": message}
+    var resp map[string]bool
+    
+    return c.makeRequest(ctx, "POST", fmt.Sprintf("/thread/%s/messages", sessionID), payload, &resp)
+}
+
+// GetSession retrieves session information
+func (c *Client) GetSession(ctx context.Context, sessionID string) (*SessionInfo, error) {
+    if sessionID == "" {
+        sessionID = c.sessionID
+    }
+    if sessionID == "" {
+        return nil, fmt.Errorf("no session ID provided")
+    }
+    
+    var resp SessionInfo
+    if err := c.makeRequest(ctx, "GET", fmt.Sprintf("/thread/%s", sessionID), nil, &resp); err != nil {
+        return nil, err
+    }
+    
+    return &resp, nil
+}
+
+// ListMessages retrieves messages from a session
+func (c *Client) ListMessages(ctx context.Context, sessionID string, opts *ListMessagesOptions) ([]Message, error) {
+    if sessionID == "" {
+        sessionID = c.sessionID
+    }
+    if sessionID == "" {
+        return nil, fmt.Errorf("no session ID provided")
+    }
+    
+    params := url.Values{}
+    if opts != nil {
+        if opts.Limit > 0 {
+            params.Set("limit", strconv.Itoa(opts.Limit))
+        }
+        if opts.Order != "" {
+            params.Set("order", opts.Order)
+        }
+        if opts.After != "" {
+            params.Set("after", opts.After)
+        }
+        if opts.Before != "" {
+            params.Set("before", opts.Before)
+        }
+    }
+    
+    path := fmt.Sprintf("/thread/%s/messages", sessionID)
+    if len(params) > 0 {
+        path += "?" + params.Encode()
+    }
+    
+    var messages []Message
+    if err := c.makeRequest(ctx, "GET", path, nil, &messages); err != nil {
+        return nil, err
+    }
+    
+    return messages, nil
+}
+
+// GetAllMessages retrieves all messages from a session
+func (c *Client) GetAllMessages(ctx context.Context, sessionID string) ([]Message, error) {
+    var allMessages []Message
+    var after string
+    
+    for {
+        messages, err := c.ListMessages(ctx, sessionID, &ListMessagesOptions{
+            Limit: 100,
+            Order: "asc",
+            After: after,
+        })
+        if err != nil {
+            return nil, err
+        }
+        
+        if len(messages) == 0 {
+            break
+        }
+        
+        allMessages = append(allMessages, messages...)
+        after = messages[len(messages)-1].ID
+        
+        if len(messages) < 100 {
+            break
+        }
+    }
+    
+    return allMessages, nil
+}
+
+// SendAndWaitForResponse sends a message and waits for assistant response
+func (c *Client) SendAndWaitForResponse(ctx context.Context, sessionID, message string, timeout time.Duration) (*Message, error) {
+    if sessionID == "" {
+        sessionID = c.sessionID
+    }
+    
+    // Get last message before sending
+    messagesBefore, err := c.ListMessages(ctx, sessionID, &ListMessagesOptions{
+        Limit: 1,
+        Order: "desc",
+    })
+    if err != nil {
+        return nil, err
+    }
+    
+    var lastMessageTime time.Time
+    if len(messagesBefore) > 0 {
+        lastMessageTime = messagesBefore[0].CreatedAt
+    } else {
+        lastMessageTime = time.Now().UTC()
+    }
+    
+    // Send message
+    if err := c.SendMessage(ctx, sessionID, message); err != nil {
+        return nil, err
+    }
+    
+    // Poll for response
+    deadline := time.Now().Add(timeout)
+    ticker := time.NewTicker(1 * time.Second)
+    defer ticker.Stop()
+    
+    for {
+        select {
+        case <-ctx.Done():
+            return nil, ctx.Err()
+        case <-ticker.C:
+            if time.Now().After(deadline) {
+                return nil, fmt.Errorf("timeout waiting for response")
+            }
+            
+            messages, err := c.ListMessages(ctx, sessionID, &ListMessagesOptions{
+                Limit: 5,
+                Order: "desc",
+            })
+            if err != nil {
+                return nil, err
+            }
+            
+            for _, msg := range messages {
+                if msg.Type == MessageTypeAssistant && msg.CreatedAt.After(lastMessageTime) {
+                    return &msg, nil
+                }
+            }
+        }
+    }
+}
+
+// makeRequest makes an HTTP request to the API
+func (c *Client) makeRequest(ctx context.Context, method, path string, body interface{}, result interface{}) error {
+    url := c.baseURL + path
+    
+    var bodyReader io.Reader
+    if body != nil {
+        jsonBody, err := json.Marshal(body)
+        if err != nil {
+            return fmt.Errorf("failed to marshal request body: %w", err)
+        }
+        bodyReader = bytes.NewBuffer(jsonBody)
+    }
+    
+    req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+    if err != nil {
+        return fmt.Errorf("failed to create request: %w", err)
+    }
+    
+    req.Header.Set("api-key", c.apiKey)
+    if body != nil {
+        req.Header.Set("Content-Type", "application/json")
+    }
+    
+    resp, err := c.httpClient.Do(req)
+    if err != nil {
+        return fmt.Errorf("request failed: %w", err)
+    }
+    defer resp.Body.Close()
+    
+    respBody, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return fmt.Errorf("failed to read response body: %w", err)
+    }
+    
+    if resp.StatusCode != http.StatusOK {
+        var errorResp struct {
+            Message string `json:"message"`
+            Error   string `json:"error"`
+        }
+        
+        if err := json.Unmarshal(respBody, &errorResp); err == nil {
+            return fmt.Errorf("API error (%d): %s", resp.StatusCode, errorResp.Message)
+        }
+        
+        return fmt.Errorf("API error (%d): %s", resp.StatusCode, string(respBody))
+    }
+    
+    if result != nil {
+        if err := json.Unmarshal(respBody, result); err != nil {
+            return fmt.Errorf("failed to decode response: %w", err)
+        }
+    }
+    
+    return nil
+}
+
+// Example usage:
+/*
+func main() {
+    client := nexus.NewClient(os.Getenv("NEXUS_API_KEY"))
+    ctx := context.Background()
+    
+    // Create session
+    session, err := client.CreateSession(ctx, "Hello!")
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // Send and wait for response
+    response, err := client.SendAndWaitForResponse(
+        ctx,
+        session.ID,
+        "Can you help me?",
+        30*time.Second,
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    fmt.Printf("Assistant: %s\n", response.Content)
+}
+*/
+```
+
+## Ruby
+
+### Installation
+
+```bash
+gem install httparty dotenv
+```
+
+### Complete SDK Implementation
+
+```ruby Ruby
+require 'httparty'
+require 'json'
+require 'time'
+require 'logger'
+
+module Nexus
+  class Error < StandardError; end
+  class AuthenticationError < Error; end
+  class RateLimitError < Error; end
+  class SessionNotFoundError < Error; end
+  class TimeoutError < Error; end
+
+  class Client
+    include HTTParty
+    
+    attr_accessor :session_id
+    attr_reader :logger
+
+    def initialize(api_key:, base_url: 'https://api.nexusgpt.io/api/public', timeout: 30)
+      @api_key = api_key
+      @base_url = base_url
+      @timeout = timeout
+      @session_id = nil
+      @logger = Logger.new(STDOUT)
+      
+      self.class.base_uri @base_url
+      self.class.default_timeout @timeout
+    end
+
+    # Create a new chat session
+    def create_session(initial_message = nil)
+      body = {}
+      body[:message] = initial_message if initial_message
+
+      response = make_request(:post, '/thread', body: body)
+      @session_id = response['id']
+      
+      logger.info "Created session: #{@session_id}"
+      response
+    end
+
+    # Send a message to a session
+    def send_message(message, session_id: nil)
+      sid = session_id || @session_id
+      raise ArgumentError, 'No session ID available' unless sid
+
+      make_request(:post, "/thread/#{sid}/messages", body: { message: message })
+      logger.info "Message sent to session #{sid}"
+    end
+
+    # Get session information
+    def get_session(session_id: nil)
+      sid = session_id || @session_id
+      raise ArgumentError, 'No session ID available' unless sid
+
+      make_request(:get, "/thread/#{sid}")
+    end
+
+    # List messages with pagination
+    def list_messages(session_id: nil, limit: 20, order: 'asc', after: nil, before: nil)
+      sid = session_id || @session_id
+      raise ArgumentError, 'No session ID available' unless sid
+
+      query = {
+        limit: limit,
+        order: order
+      }
+      query[:after] = after if after
+      query[:before] = before if before
+
+      make_request(:get, "/thread/#{sid}/messages", query: query)
+    end
+
+    # Get all messages from a session
+    def get_all_messages(session_id: nil)
+      sid = session_id || @session_id
+      all_messages = []
+      after = nil
+
+      loop do
+        messages = list_messages(
+          session_id: sid,
+          limit: 100,
+          order: 'asc',
+          after: after
+        )
+
+        break if messages.empty?
+
+        all_messages.concat(messages)
+        after = messages.last['id']
+
+        break if messages.length < 100
+      end
+
+      all_messages
+    end
+
+    # Send a message and wait for assistant response
+    def send_and_wait_for_response(message, session_id: nil, timeout: 30, poll_interval: 1)
+      sid = session_id || @session_id
+      
+      # Get last message time
+      messages_before = list_messages(session_id: sid, limit: 1, order: 'desc')
+      last_message_time = messages_before.first ? Time.parse(messages_before.first['createdAt']) : Time.now.utc
+
+      # Send message
+      send_message(message, session_id: sid)
+
+      # Poll for response
+      start_time = Time.now
+      
+      while Time.now - start_time < timeout
+        sleep poll_interval
+
+        new_messages = list_messages(session_id: sid, limit: 5, order: 'desc')
+        
+        assistant_message = new_messages.find do |msg|
+          msg['type'] == 'assistant' && Time.parse(msg['createdAt']) > last_message_time
+        end
+
+        return assistant_message if assistant_message
+      end
+
+      raise TimeoutError, "Timeout waiting for response after #{timeout} seconds"
+    end
+
+    # Stream messages (poll for new messages)
+    def stream_messages(session_id: nil, poll_interval: 2, &block)
+      sid = session_id || @session_id
+      last_message_id = nil
+
+      # Get initial messages
+      messages = list_messages(session_id: sid, limit: 10, order: 'desc')
+      last_message_id = messages.first['id'] if messages.any?
+
+      loop do
+        sleep poll_interval
+
+        new_messages = if last_message_id
+          list_messages(session_id: sid, order: 'asc', after: last_message_id)
+        else
+          list_messages(session_id: sid, limit: 1, order: 'desc')
+        end
+
+        if new_messages.any?
+          last_message_id = new_messages.last['id']
+          new_messages.each { |msg| yield msg }
+        end
+      end
+    end
+
+    private
+
+    def make_request(method, path, body: nil, query: nil)
+      options = {
+        headers: {
+          'api-key' => @api_key,
+          'Content-Type' => 'application/json'
+        }
+      }
+      
+      options[:body] = body.to_json if body
+      options[:query] = query if query
+
+      response = self.class.send(method, path, options)
+      
+      handle_response(response)
+    end
+
+    def handle_response(response)
+      case response.code
+      when 200
+        response.parsed_response
+      when 401
+        raise AuthenticationError, "Authentication failed: #{response['message']}"
+      when 404
+        raise SessionNotFoundError, "Resource not found: #{response['message']}"
+      when 429
+        raise RateLimitError, "Rate limit exceeded: #{response['message']}"
+      else
+        raise Error, "API error (#{response.code}): #{response['message'] || response.body}"
+      end
+    end
+  end
+end
+
+# Example usage
+if __FILE__ == $0
+  require 'dotenv/load'
+  
+  client = Nexus::Client.new(api_key: ENV['NEXUS_API_KEY'])
+  
+  begin
+    # Create session
+    session = client.create_session('Hello! I need help with Ruby programming.')
+    puts "Session created: #{session['id']}"
+    
+    # Send and wait for response
+    response = client.send_and_wait_for_response('How do I read a JSON file?')
+    puts "Assistant: #{response['content']}"
+    
+    # Get all messages
+    messages = client.get_all_messages
+    puts "\nTotal messages: #{messages.length}"
+    
+    # Stream new messages
+    puts "\nStreaming messages (press Ctrl+C to stop)..."
+    client.stream_messages do |msg|
+      puts "[#{msg['type']}] #{msg['content']}"
+    end
+    
+  rescue Nexus::Error => e
+    puts "Error: #{e.message}"
+  end
+end
+```
+
+## Swift
+
+### Installation
+
+```swift Package.swift
+// Add to your Package.swift dependencies
+dependencies: [
+    .package(url: "https://github.com/Alamofire/Alamofire.git", from: "5.8.0")
+]
+```
+
+### Complete SDK Implementation
+
+```swift Swift
+import Foundation
+import Alamofire
+
+// MARK: - Models
+struct SessionResponse: Codable {
+    let id: String
+    let createdAt: String
+}
+
+struct Message: Codable {
+    let id: String
+    let type: MessageType
+    let content: String
+    let createdAt: String
+    let toolCallId: String?
+    let metadata: [String: Any]?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, type, content, createdAt, toolCallId, metadata
+    }
+}
+
+enum MessageType: String, Codable {
+    case user, assistant, tool, system
+}
+
+struct SendMessageResponse: Codable {
+    let success: Bool
+}
+
+struct SessionInfo: Codable {
+    let id: String
+    let topic: String?
+    let status: SessionStatus
+    let createdAt: String
+    let lastMessageAt: String?
+    let messageCount: Int?
+}
+
+enum SessionStatus: String, Codable {
+    case active = "ACTIVE"
+    case expired = "EXPIRED"
+    case closed = "CLOSED"
+}
+
+// MARK: - Errors
+enum NexusError: Error, LocalizedError {
+    case invalidAPIKey
+    case sessionNotFound
+    case rateLimitExceeded
+    case networkError(String)
+    case unknownError(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidAPIKey:
+            return "Invalid API key"
+        case .sessionNotFound:
+            return "Session not found"
+        case .rateLimitExceeded:
+            return "Rate limit exceeded"
+        case .networkError(let message):
+            return "Network error: \(message)"
+        case .unknownError(let message):
+            return "Error: \(message)"
+        }
+    }
+}
+
+// MARK: - Nexus Client
+class NexusClient {
+    private let apiKey: String
+    private let baseURL: String
+    private let session: Session
+    private var currentSessionId: String?
+    
+    init(apiKey: String, baseURL: String = "https://api.nexusgpt.io/api/public") {
+        self.apiKey = apiKey
+        self.baseURL = baseURL
+        
+        // Configure session with timeout
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 30
+        self.session = Session(configuration: configuration)
+    }
+    
+    // MARK: - Public Methods
+    
+    /// Create a new chat session
+    func createSession(initialMessage: String? = nil) async throws -> SessionResponse {
+        var parameters: [String: Any] = [:]
+        if let message = initialMessage {
+            parameters["message"] = message
+        }
+        
+        let response = try await request(
+            endpoint: "/thread",
+            method: .post,
+            parameters: parameters
+        ).serializingDecodable(SessionResponse.self).value
+        
+        self.currentSessionId = response.id
+        return response
+    }
+    
+    /// Send a message to a session
+    func sendMessage(_ message: String, sessionId: String? = nil) async throws {
+        let id = sessionId ?? currentSessionId
+        guard let sessionId = id else {
+            throw NexusError.sessionNotFound
+        }
+        
+        let parameters = ["message": message]
+        
+        _ = try await request(
+            endpoint: "/thread/\(sessionId)/messages",
+            method: .post,
+            parameters: parameters
+        ).serializingDecodable(SendMessageResponse.self).value
+    }
+    
+    /// Get session information
+    func getSession(sessionId: String? = nil) async throws -> SessionInfo {
+        let id = sessionId ?? currentSessionId
+        guard let sessionId = id else {
+            throw NexusError.sessionNotFound
+        }
+        
+        return try await request(
+            endpoint: "/thread/\(sessionId)",
+            method: .get
+        ).serializingDecodable(SessionInfo.self).value
+    }
+    
+    /// List messages with pagination
+    func listMessages(
+        sessionId: String? = nil,
+        limit: Int = 20,
+        order: String = "asc",
+        after: String? = nil,
+        before: String? = nil
+    ) async throws -> [Message] {
+        let id = sessionId ?? currentSessionId
+        guard let sessionId = id else {
+            throw NexusError.sessionNotFound
+        }
+        
+        var parameters: [String: Any] = [
+            "limit": limit,
+            "order": order
+        ]
+        
+        if let after = after { parameters["after"] = after }
+        if let before = before { parameters["before"] = before }
+        
+        return try await request(
+            endpoint: "/thread/\(sessionId)/messages",
+            method: .get,
+            parameters: parameters
+        ).serializingDecodable([Message].self).value
+    }
+    
+    /// Send message and wait for response
+    func sendAndWaitForResponse(
+        _ message: String,
+        sessionId: String? = nil,
+        timeout: TimeInterval = 30
+    ) async throws -> Message {
+        let id = sessionId ?? currentSessionId
+        guard let sessionId = id else {
+            throw NexusError.sessionNotFound
+        }
+        
+        // Get last message time
+        let messagesBefore = try await listMessages(
+            sessionId: sessionId,
+            limit: 1,
+            order: "desc"
+        )
+        
+        let lastMessageTime = messagesBefore.first?.createdAt ?? ISO8601DateFormatter().string(from: Date())
+        
+        // Send message
+        try await sendMessage(message, sessionId: sessionId)
+        
+        // Poll for response
+        let startTime = Date()
+        
+        while Date().timeIntervalSince(startTime) < timeout {
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+            
+            let newMessages = try await listMessages(
+                sessionId: sessionId,
+                limit: 5,
+                order: "desc"
+            )
+            
+            if let assistantMessage = newMessages.first(where: { 
+                $0.type == .assistant && $0.createdAt > lastMessageTime 
+            }) {
+                return assistantMessage
+            }
+        }
+        
+        throw NexusError.unknownError("Timeout waiting for response")
+    }
+    
+    // MARK: - Private Methods
+    
+    private func request(
+        endpoint: String,
+        method: HTTPMethod,
+        parameters: [String: Any]? = nil
+    ) -> DataRequest {
+        let url = baseURL + endpoint
+        let headers: HTTPHeaders = [
+            "api-key": apiKey,
+            "Content-Type": "application/json"
+        ]
+        
+        let request = session.request(
+            url,
+            method: method,
+            parameters: parameters,
+            encoding: method == .get ? URLEncoding.default : JSONEncoding.default,
+            headers: headers
+        )
+        
+        return request.validate { request, response, data in
+            if (200...299).contains(response.statusCode) {
+                return .success(())
+            }
+            
+            // Parse error response
+            var errorMessage = "Unknown error"
+            if let data = data,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let message = json["message"] as? String {
+                errorMessage = message
+            }
+            
+            switch response.statusCode {
+            case 401:
+                return .failure(NexusError.invalidAPIKey)
+            case 404:
+                return .failure(NexusError.sessionNotFound)
+            case 429:
+                return .failure(NexusError.rateLimitExceeded)
+            default:
+                return .failure(NexusError.unknownError(errorMessage))
+            }
+        }
+    }
+}
+
+// MARK: - Usage Example
+class NexusChatViewController: UIViewController {
+    private let client: NexusClient
+    private var sessionId: String?
+    
+    init() {
+        // Get API key from secure storage
+        let apiKey = ProcessInfo.processInfo.environment["NEXUS_API_KEY"] ?? ""
+        self.client = NexusClient(apiKey: apiKey)
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    func startChat() async {
+        do {
+            // Create session
+            let session = try await client.createSession(
+                initialMessage: "Hello, I need help with my iOS app"
+            )
+            self.sessionId = session.id
+            print("Session created: \(session.id)")
+            
+            // Send message and wait for response
+            let response = try await client.sendAndWaitForResponse(
+                "How do I implement push notifications?"
+            )
+            print("Assistant: \(response.content)")
+            
+            // Get all messages
+            let messages = try await client.listMessages()
+            print("Total messages: \(messages.count)")
+            
+        } catch {
+            print("Error: \(error.localizedDescription)")
+        }
+    }
+}
+
+// MARK: - SwiftUI Integration
+import SwiftUI
+
+@MainActor
+class ChatViewModel: ObservableObject {
+    @Published var messages: [Message] = []
+    @Published var isLoading = false
+    @Published var error: String?
+    
+    private let client: NexusClient
+    private var sessionId: String?
+    
+    init(apiKey: String) {
+        self.client = NexusClient(apiKey: apiKey)
+    }
+    
+    func sendMessage(_ text: String) async {
+        isLoading = true
+        error = nil
+        
+        do {
+            // Create session if needed
+            if sessionId == nil {
+                let session = try await client.createSession()
+                sessionId = session.id
+            }
+            
+            // Add user message to UI
+            let userMessage = Message(
+                id: UUID().uuidString,
+                type: .user,
+                content: text,
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                toolCallId: nil,
+                metadata: nil
+            )
+            messages.append(userMessage)
+            
+            // Send and wait for response
+            let response = try await client.sendAndWaitForResponse(text)
+            messages.append(response)
+            
+        } catch {
+            self.error = error.localizedDescription
+        }
+        
+        isLoading = false
+    }
+}
+
+struct ChatView: View {
+    @StateObject private var viewModel: ChatViewModel
+    @State private var messageText = ""
+    
+    init(apiKey: String) {
+        _viewModel = StateObject(wrappedValue: ChatViewModel(apiKey: apiKey))
+    }
+    
+    var body: some View {
+        VStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    ForEach(viewModel.messages, id: \.id) { message in
+                        MessageBubble(message: message)
+                    }
+                }
+                .padding()
+            }
+            
+            HStack {
+                TextField("Type a message...", text: $messageText)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                
+                Button("Send") {
+                    Task {
+                        await viewModel.sendMessage(messageText)
+                        messageText = ""
+                    }
+                }
+                .disabled(messageText.isEmpty || viewModel.isLoading)
+            }
+            .padding()
+        }
+    }
+}
+```
+
+## Kotlin
+
+### Installation
+
+```kotlin build.gradle.kts
+dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+}
+```
+
+### Complete SDK Implementation
+
+```kotlin Kotlin
+import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.*
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+
+// Data Classes
+data class SessionResponse(
+    val id: String,
+    val createdAt: String
+)
+
+data class Message(
+    val id: String,
+    val type: MessageType,
+    val content: String,
+    val createdAt: String,
+    val toolCallId: String? = null,
+    val metadata: Map<String, Any>? = null
+)
+
+enum class MessageType {
+    @SerializedName("user") USER,
+    @SerializedName("assistant") ASSISTANT,
+    @SerializedName("tool") TOOL,
+    @SerializedName("system") SYSTEM
+}
+
+data class SendMessageResponse(
+    val success: Boolean
+)
+
+data class SessionInfo(
+    val id: String,
+    val topic: String?,
+    val status: SessionStatus,
+    val createdAt: String,
+    val lastMessageAt: String?,
+    val messageCount: Int?
+)
+
+enum class SessionStatus {
+    @SerializedName("ACTIVE") ACTIVE,
+    @SerializedName("EXPIRED") EXPIRED,
+    @SerializedName("CLOSED") CLOSED
+}
+
+// Exceptions
+sealed class NexusException(message: String) : Exception(message) {
+    class InvalidApiKey : NexusException("Invalid API key")
+    class SessionNotFound : NexusException("Session not found")
+    class RateLimitExceeded : NexusException("Rate limit exceeded")
+    class NetworkError(message: String) : NexusException("Network error: $message")
+    class UnknownError(message: String) : NexusException(message)
+}
+
+// Nexus Client
+class NexusClient(
+    private val apiKey: String,
+    private val baseUrl: String = "https://api.nexusgpt.io/api/public"
+) {
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+    
+    private val gson = Gson()
+    private val json = "application/json".toMediaType()
+    
+    var currentSessionId: String? = null
+        private set
+    
+    // Create a new chat session
+    suspend fun createSession(initialMessage: String? = null): SessionResponse {
+        val body = if (initialMessage != null) {
+            mapOf("message" to initialMessage)
+        } else {
+            emptyMap()
+        }
+        
+        val response = makeRequest(
+            endpoint = "/thread",
+            method = "POST",
+            body = body
+        )
+        
+        val session = gson.fromJson(response, SessionResponse::class.java)
+        currentSessionId = session.id
+        return session
+    }
+    
+    // Send a message to a session
+    suspend fun sendMessage(message: String, sessionId: String? = null) {
+        val id = sessionId ?: currentSessionId
+            ?: throw NexusException.SessionNotFound()
+        
+        makeRequest(
+            endpoint = "/thread/$id/messages",
+            method = "POST",
+            body = mapOf("message" to message)
+        )
+    }
+    
+    // Get session information
+    suspend fun getSession(sessionId: String? = null): SessionInfo {
+        val id = sessionId ?: currentSessionId
+            ?: throw NexusException.SessionNotFound()
+        
+        val response = makeRequest(
+            endpoint = "/thread/$id",
+            method = "GET"
+        )
+        
+        return gson.fromJson(response, SessionInfo::class.java)
+    }
+    
+    // List messages with pagination
+    suspend fun listMessages(
+        sessionId: String? = null,
+        limit: Int = 20,
+        order: String = "asc",
+        after: String? = null,
+        before: String? = null
+    ): List<Message> {
+        val id = sessionId ?: currentSessionId
+            ?: throw NexusException.SessionNotFound()
+        
+        val queryParams = buildString {
+            append("?limit=$limit")
+            append("&order=$order")
+            after?.let { append("&after=$it") }
+            before?.let { append("&before=$it") }
+        }
+        
+        val response = makeRequest(
+            endpoint = "/thread/$id/messages$queryParams",
+            method = "GET"
+        )
+        
+        return gson.fromJson(response, Array<Message>::class.java).toList()
+    }
+    
+    // Send message and wait for response
+    suspend fun sendAndWaitForResponse(
+        message: String,
+        sessionId: String? = null,
+        timeoutSeconds: Long = 30
+    ): Message = withContext(Dispatchers.IO) {
+        val id = sessionId ?: currentSessionId
+            ?: throw NexusException.SessionNotFound()
+        
+        // Get last message time
+        val messagesBefore = listMessages(id, limit = 1, order = "desc")
+        val lastMessageTime = messagesBefore.firstOrNull()?.createdAt
+            ?: System.currentTimeMillis().toString()
+        
+        // Send message
+        sendMessage(message, id)
+        
+        // Poll for response
+        val startTime = System.currentTimeMillis()
+        val timeoutMillis = timeoutSeconds * 1000
+        
+        while (System.currentTimeMillis() - startTime < timeoutMillis) {
+            delay(1000) // Wait 1 second
+            
+            val newMessages = listMessages(id, limit = 5, order = "desc")
+            
+            val assistantMessage = newMessages.find { 
+                it.type == MessageType.ASSISTANT && 
+                it.createdAt > lastMessageTime 
+            }
+            
+            if (assistantMessage != null) {
+                return@withContext assistantMessage
+            }
+        }
+        
+        throw NexusException.UnknownError("Timeout waiting for response")
+    }
+    
+    // Get all messages from a session
+    suspend fun getAllMessages(sessionId: String? = null): List<Message> {
+        val id = sessionId ?: currentSessionId
+            ?: throw NexusException.SessionNotFound()
+        
+        val allMessages = mutableListOf<Message>()
+        var after: String? = null
+        
+        while (true) {
+            val messages = listMessages(
+                sessionId = id,
+                limit = 100,
+                order = "asc",
+                after = after
+            )
+            
+            if (messages.isEmpty()) break
+            
+            allMessages.addAll(messages)
+            after = messages.last().id
+            
+            if (messages.size < 100) break
+        }
+        
+        return allMessages
+    }
+    
+    // Make HTTP request
+    private suspend fun makeRequest(
+        endpoint: String,
+        method: String,
+        body: Map<String, Any>? = null
+    ): String = withContext(Dispatchers.IO) {
+        val url = baseUrl + endpoint
+        
+        val requestBuilder = Request.Builder()
+            .url(url)
+            .header("api-key", apiKey)
+            .header("Content-Type", "application/json")
+        
+        when (method) {
+            "GET" -> requestBuilder.get()
+            "POST" -> {
+                val jsonBody = gson.toJson(body ?: emptyMap<String, Any>())
+                requestBuilder.post(jsonBody.toRequestBody(json))
+            }
+        }
+        
+        val request = requestBuilder.build()
+        
+        try {
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string() ?: ""
+                
+                when (response.code) {
+                    200 -> responseBody
+                    401 -> throw NexusException.InvalidApiKey()
+                    404 -> throw NexusException.SessionNotFound()
+                    429 -> throw NexusException.RateLimitExceeded()
+                    else -> {
+                        val errorMessage = try {
+                            val errorJson = gson.fromJson(responseBody, Map::class.java)
+                            errorJson["message"] as? String ?: "Unknown error"
+                        } catch (e: Exception) {
+                            "Unknown error"
+                        }
+                        throw NexusException.UnknownError(errorMessage)
+                    }
+                }
+            }
+        } catch (e: IOException) {
+            throw NexusException.NetworkError(e.message ?: "Network error")
+        }
+    }
+}
+
+// Android Integration Example
+class ChatViewModel(private val apiKey: String) : ViewModel() {
+    private val client = NexusClient(apiKey)
+    private val _messages = MutableLiveData<List<Message>>(emptyList())
+    val messages: LiveData<List<Message>> = _messages
+    
+    private val _isLoading = MutableLiveData(false)
+    val isLoading: LiveData<Boolean> = _isLoading
+    
+    private val _error = MutableLiveData<String?>(null)
+    val error: LiveData<String?> = _error
+    
+    fun sendMessage(text: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            
+            try {
+                // Create session if needed
+                if (client.currentSessionId == null) {
+                    client.createSession()
+                }
+                
+                // Add user message to UI
+                val userMessage = Message(
+                    id = UUID.randomUUID().toString(),
+                    type = MessageType.USER,
+                    content = text,
+                    createdAt = System.currentTimeMillis().toString()
+                )
+                
+                val currentMessages = _messages.value ?: emptyList()
+                _messages.value = currentMessages + userMessage
+                
+                // Send and wait for response
+                val response = client.sendAndWaitForResponse(text)
+                _messages.value = (_messages.value ?: emptyList()) + response
+                
+            } catch (e: Exception) {
+                _error.value = e.message
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+    
+    fun loadMessages() {
+        viewModelScope.launch {
+            try {
+                val allMessages = client.getAllMessages()
+                _messages.value = allMessages
+            } catch (e: Exception) {
+                _error.value = e.message
+            }
+        }
+    }
+}
+
+// Jetpack Compose UI Example
+@Composable
+fun ChatScreen(viewModel: ChatViewModel) {
+    val messages by viewModel.messages.observeAsState(emptyList())
+    val isLoading by viewModel.isLoading.observeAsState(false)
+    val error by viewModel.error.observeAsState()
+    
+    var messageText by remember { mutableStateOf("") }
+    
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Messages list
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(messages) { message ->
+                MessageBubble(message)
+            }
+        }
+        
+        // Error display
+        error?.let {
+            Text(
+                text = it,
+                color = MaterialTheme.colors.error,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+        
+        // Input field
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = messageText,
+                onValueChange = { messageText = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Type a message...") },
+                enabled = !isLoading
+            )
+            
+            Button(
+                onClick = {
+                    viewModel.sendMessage(messageText)
+                    messageText = ""
+                },
+                enabled = messageText.isNotBlank() && !isLoading
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text("Send")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MessageBubble(message: Message) {
+    val isUser = message.type == MessageType.USER
+    
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+    ) {
+        Card(
+            modifier = Modifier.widthIn(max = 280.dp),
+            backgroundColor = if (isUser) 
+                MaterialTheme.colors.primary 
+            else 
+                MaterialTheme.colors.surface,
+            elevation = 2.dp
+        ) {
+            Text(
+                text = message.content,
+                modifier = Modifier.padding(12.dp),
+                color = if (isUser) 
+                    MaterialTheme.colors.onPrimary 
+                else 
+                    MaterialTheme.colors.onSurface
+            )
+        }
+    }
+}
+
+// Usage in Activity
+class ChatActivity : AppCompatActivity() {
+    private lateinit var viewModel: ChatViewModel
+    
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Get API key from secure storage
+        val apiKey = getSharedPreferences("nexus", MODE_PRIVATE)
+            .getString("api_key", "") ?: ""
+        
+        viewModel = ViewModelProvider(
+            this,
+            ChatViewModelFactory(apiKey)
+        ).get(ChatViewModel::class.java)
+        
+        setContent {
+            MaterialTheme {
+                ChatScreen(viewModel)
+            }
+        }
+    }
+}
+
+class ChatViewModelFactory(
+    private val apiKey: String
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(ChatViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return ChatViewModel(apiKey) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
+    }
+}
+```
+
+## Best Practices for All SDKs
+
+<AccordionGroup>
+  <Accordion title="Error Handling">
+    - Implement specific error types for different scenarios
+    - Use exponential backoff for retries
+    - Log errors with context for debugging
+    - Provide meaningful error messages to users
+  </Accordion>
+  
+  <Accordion title="Session Management">
+    - Store session IDs persistently for long-running applications
+    - Implement session recovery mechanisms
+    - Handle session expiration gracefully
+    - Clean up old sessions when appropriate
+  </Accordion>
+  
+  <Accordion title="Performance Optimization">
+    - Use connection pooling for HTTP clients
+    - Implement caching for frequently accessed data
+    - Batch requests when possible
+    - Use appropriate timeouts for different operations
+  </Accordion>
+  
+  <Accordion title="Security">
+    - Never hardcode API keys
+    - Use environment variables or secure vaults
+    - Implement rate limiting on the client side
+    - Validate and sanitize all user inputs
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+Now that you have a complete SDK implementation, explore:
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/error-handling">
+    Learn about all possible errors and how to handle them
+  </Card>
+  
+  <Card title="Rate Limiting" icon="gauge" href="/rate-limiting">
+    Understand rate limits and optimization strategies
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/best-practices">
+    Follow our recommended patterns for production
+  </Card>
+  
+</CardGroup>

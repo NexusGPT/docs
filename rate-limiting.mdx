@@ -1,0 +1,542 @@
+---
+title: Rate Limiting
+description: Understanding and working with Nexus API rate limits
+---
+
+# Rate Limiting
+
+The Nexus API implements rate limiting to ensure fair usage and maintain service quality for all users. This guide explains our rate limits, how to work with them, and strategies for optimizing your API usage.
+
+## Rate Limit Overview
+
+### Current Limits
+
+| Limit Type | Value | Window | Scope |
+|------------|-------|---------|--------|
+| Requests per minute | 60 | 1 minute | Per API key |
+| Requests per hour | 1,000 | 1 hour | Per API key |
+| Concurrent sessions | 100 | - | Per API key |
+| Message length | 4,000 chars | - | Per message |
+| Messages per session | 10,000 | - | Per session |
+
+<Note>
+Rate limits may vary based on your subscription plan. Contact support for higher limits.
+</Note>
+
+## Rate Limit Headers
+
+Every API response includes headers that help you track your rate limit usage:
+
+```http
+HTTP/1.1 200 OK
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 45
+X-RateLimit-Reset: 1642680000
+```
+
+### Header Definitions
+
+- **X-RateLimit-Limit**: Maximum requests allowed in the current window
+- **X-RateLimit-Remaining**: Number of requests remaining in the current window
+- **X-RateLimit-Reset**: Unix timestamp when the rate limit window resets
+
+## Handling Rate Limits
+
+### Reading Rate Limit Headers
+
+<CodeGroup>
+
+```javascript Node.js
+async function makeRequestWithRateLimitInfo() {
+  try {
+    const response = await axios.get(url, {
+      headers: { 'api-key': apiKey }
+    });
+    
+    // Extract rate limit info
+    const rateLimit = {
+      limit: parseInt(response.headers['x-ratelimit-limit']),
+      remaining: parseInt(response.headers['x-ratelimit-remaining']),
+      reset: new Date(parseInt(response.headers['x-ratelimit-reset']) * 1000)
+    };
+    
+    console.log(`Rate limit: ${rateLimit.remaining}/${rateLimit.limit}`);
+    console.log(`Resets at: ${rateLimit.reset.toLocaleTimeString()}`);
+    
+    // Warn if approaching limit
+    if (rateLimit.remaining < 10) {
+      console.warn('Approaching rate limit!');
+    }
+    
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 429) {
+      const resetTime = new Date(
+        parseInt(error.response.headers['x-ratelimit-reset']) * 1000
+      );
+      console.error(`Rate limited until ${resetTime.toLocaleTimeString()}`);
+    }
+    throw error;
+  }
+}
+```
+
+```python Python
+import requests
+from datetime import datetime
+
+def make_request_with_rate_limit_info():
+    try:
+        response = requests.get(url, headers={'api-key': api_key})
+        response.raise_for_status()
+        
+        # Extract rate limit info
+        rate_limit = {
+            'limit': int(response.headers.get('X-RateLimit-Limit', 0)),
+            'remaining': int(response.headers.get('X-RateLimit-Remaining', 0)),
+            'reset': datetime.fromtimestamp(
+                int(response.headers.get('X-RateLimit-Reset', 0))
+            )
+        }
+        
+        print(f"Rate limit: {rate_limit['remaining']}/{rate_limit['limit']}")
+        print(f"Resets at: {rate_limit['reset'].strftime('%H:%M:%S')}")
+        
+        # Warn if approaching limit
+        if rate_limit['remaining'] < 10:
+            print("WARNING: Approaching rate limit!")
+        
+        return response.json()
+        
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 429:
+            reset_time = datetime.fromtimestamp(
+                int(e.response.headers.get('X-RateLimit-Reset', 0))
+            )
+            print(f"Rate limited until {reset_time.strftime('%H:%M:%S')}")
+        raise
+```
+
+</CodeGroup>
+
+### Implementing Backoff Strategies
+
+#### Exponential Backoff
+
+```javascript
+class RateLimitHandler {
+  constructor(maxRetries = 5) {
+    this.maxRetries = maxRetries;
+    this.baseDelay = 1000; // 1 second
+  }
+
+  async executeWithBackoff(operation) {
+    let lastError;
+    
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error) {
+        if (error.response?.status !== 429) {
+          throw error; // Not a rate limit error
+        }
+        
+        lastError = error;
+        
+        // Check if server provided retry-after
+        const retryAfter = error.response.headers['retry-after'];
+        let delay;
+        
+        if (retryAfter) {
+          // Server specified wait time
+          delay = parseInt(retryAfter) * 1000;
+        } else {
+          // Exponential backoff with jitter
+          delay = this.calculateBackoff(attempt);
+        }
+        
+        console.log(`Rate limited. Waiting ${delay}ms before retry ${attempt + 1}/${this.maxRetries}`);
+        await this.sleep(delay);
+      }
+    }
+    
+    throw lastError;
+  }
+
+  calculateBackoff(attempt) {
+    // Exponential backoff: 1s, 2s, 4s, 8s, 16s...
+    const exponentialDelay = this.baseDelay * Math.pow(2, attempt);
+    
+    // Add jitter (±25%) to prevent thundering herd
+    const jitter = exponentialDelay * 0.25 * (Math.random() * 2 - 1);
+    
+    return Math.min(exponentialDelay + jitter, 60000); // Max 60 seconds
+  }
+
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+// Usage
+const rateLimitHandler = new RateLimitHandler();
+const result = await rateLimitHandler.executeWithBackoff(() => 
+  sendMessage(sessionId, message)
+);
+```
+
+#### Adaptive Rate Limiting
+
+```javascript
+class AdaptiveRateLimiter {
+  constructor(targetUtilization = 0.8) {
+    this.targetUtilization = targetUtilization;
+    this.requestQueue = [];
+    this.rateInfo = {
+      limit: 60,
+      remaining: 60,
+      reset: Date.now() + 60000
+    };
+  }
+
+  async execute(operation) {
+    await this.waitIfNeeded();
+    
+    try {
+      const result = await operation();
+      this.updateRateInfo(result.headers);
+      return result;
+    } catch (error) {
+      if (error.response?.headers) {
+        this.updateRateInfo(error.response.headers);
+      }
+      throw error;
+    }
+  }
+
+  updateRateInfo(headers) {
+    this.rateInfo = {
+      limit: parseInt(headers['x-ratelimit-limit']) || this.rateInfo.limit,
+      remaining: parseInt(headers['x-ratelimit-remaining']) || 0,
+      reset: parseInt(headers['x-ratelimit-reset']) * 1000 || this.rateInfo.reset
+    };
+  }
+
+  async waitIfNeeded() {
+    const now = Date.now();
+    
+    // If we're at the limit, wait until reset
+    if (this.rateInfo.remaining === 0 && now < this.rateInfo.reset) {
+      const waitTime = this.rateInfo.reset - now;
+      console.log(`Rate limit exhausted. Waiting ${waitTime}ms until reset.`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return;
+    }
+    
+    // Adaptive throttling to maintain target utilization
+    const timeUntilReset = Math.max(0, this.rateInfo.reset - now);
+    const currentUtilization = 1 - (this.rateInfo.remaining / this.rateInfo.limit);
+    
+    if (currentUtilization > this.targetUtilization && timeUntilReset > 0) {
+      // Calculate delay to spread remaining requests
+      const remainingTime = timeUntilReset;
+      const remainingRequests = this.rateInfo.remaining;
+      const delay = remainingTime / remainingRequests;
+      
+      console.log(`Throttling: ${delay}ms delay to maintain ${this.targetUtilization * 100}% utilization`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+```
+
+## Optimization Strategies
+
+### 1. Request Batching
+
+Instead of making multiple individual requests, batch operations when possible:
+
+```javascript
+// Instead of this:
+for (const message of messages) {
+  await sendMessage(sessionId, message); // 10 requests
+}
+
+// Do this:
+async function sendBatchedMessages(sessionId, messages) {
+  // Combine messages with a delimiter
+  const batchedMessage = messages.join('\n---\n');
+  await sendMessage(sessionId, batchedMessage); // 1 request
+}
+```
+
+### 2. Caching Responses
+
+```javascript
+class CachedNexusClient {
+  constructor(apiKey, cacheTime = 300000) { // 5 minutes
+    this.apiKey = apiKey;
+    this.cache = new Map();
+    this.cacheTime = cacheTime;
+  }
+
+  async getSession(sessionId) {
+    const cacheKey = `session:${sessionId}`;
+    const cached = this.cache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < this.cacheTime) {
+      console.log('Returning cached session data');
+      return cached.data;
+    }
+    
+    const session = await this.fetchSession(sessionId);
+    this.cache.set(cacheKey, {
+      data: session,
+      timestamp: Date.now()
+    });
+    
+    return session;
+  }
+
+  invalidateCache(sessionId) {
+    this.cache.delete(`session:${sessionId}`);
+  }
+}
+```
+
+### 3. Connection Pooling
+
+```javascript
+// Use a single axios instance with connection pooling
+const apiClient = axios.create({
+  baseURL: 'https://api.nexusgpt.io/api/public',
+  timeout: 30000,
+  headers: {
+    'api-key': process.env.NEXUS_API_KEY
+  },
+  // Enable connection keep-alive
+  httpAgent: new http.Agent({ keepAlive: true }),
+  httpsAgent: new https.Agent({ keepAlive: true })
+});
+
+// Reuse the client for all requests
+async function makeRequest(endpoint, data) {
+  return apiClient.post(endpoint, data);
+}
+```
+
+### 4. Request Prioritization
+
+```javascript
+class PriorityRequestQueue {
+  constructor(rateLimiter) {
+    this.rateLimiter = rateLimiter;
+    this.queues = {
+      high: [],
+      medium: [],
+      low: []
+    };
+    this.processing = false;
+  }
+
+  async add(operation, priority = 'medium') {
+    return new Promise((resolve, reject) => {
+      this.queues[priority].push({ operation, resolve, reject });
+      this.process();
+    });
+  }
+
+  async process() {
+    if (this.processing) return;
+    this.processing = true;
+
+    while (this.hasRequests()) {
+      const { operation, resolve, reject } = this.getNextRequest();
+      
+      try {
+        const result = await this.rateLimiter.execute(operation);
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+      
+      // Small delay between requests
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    this.processing = false;
+  }
+
+  hasRequests() {
+    return Object.values(this.queues).some(queue => queue.length > 0);
+  }
+
+  getNextRequest() {
+    // Priority order: high -> medium -> low
+    for (const priority of ['high', 'medium', 'low']) {
+      if (this.queues[priority].length > 0) {
+        return this.queues[priority].shift();
+      }
+    }
+  }
+}
+
+// Usage
+const queue = new PriorityRequestQueue(rateLimiter);
+
+// High priority request
+await queue.add(() => sendMessage(sessionId, urgentMessage), 'high');
+
+// Low priority request
+await queue.add(() => getSessionInfo(sessionId), 'low');
+```
+
+## Monitoring Rate Limit Usage
+
+```javascript
+class RateLimitMonitor {
+  constructor() {
+    this.metrics = {
+      totalRequests: 0,
+      rateLimitHits: 0,
+      averageRemaining: 0,
+      minRemaining: 60
+    };
+  }
+
+  recordRequest(headers, wasRateLimited = false) {
+    this.metrics.totalRequests++;
+    
+    if (wasRateLimited) {
+      this.metrics.rateLimitHits++;
+    }
+    
+    const remaining = parseInt(headers['x-ratelimit-remaining']) || 0;
+    this.metrics.averageRemaining = 
+      (this.metrics.averageRemaining * (this.metrics.totalRequests - 1) + remaining) 
+      / this.metrics.totalRequests;
+    
+    this.metrics.minRemaining = Math.min(this.metrics.minRemaining, remaining);
+    
+    // Alert if consistently close to limit
+    if (this.metrics.averageRemaining < 10) {
+      console.warn('Average remaining requests below 10 - consider optimizing');
+    }
+  }
+
+  getReport() {
+    return {
+      ...this.metrics,
+      rateLimitHitRate: (this.metrics.rateLimitHits / this.metrics.totalRequests * 100).toFixed(2) + '%',
+      recommendations: this.getRecommendations()
+    };
+  }
+
+  getRecommendations() {
+    const recommendations = [];
+    
+    if (this.metrics.rateLimitHits > 0) {
+      recommendations.push('Implement exponential backoff');
+    }
+    
+    if (this.metrics.averageRemaining < 20) {
+      recommendations.push('Consider request batching');
+      recommendations.push('Implement response caching');
+    }
+    
+    if (this.metrics.minRemaining === 0) {
+      recommendations.push('Add request queuing');
+    }
+    
+    return recommendations;
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Design for Rate Limits">
+    - Always check rate limit headers
+    - Implement backoff strategies from day one
+    - Plan for rate limit increases as you scale
+  </Accordion>
+  
+  <Accordion title="Optimize API Usage">
+    - Cache responses when appropriate
+    - Batch operations to reduce request count
+    - Use pagination efficiently
+    - Avoid unnecessary requests
+  </Accordion>
+  
+  <Accordion title="Handle Limits Gracefully">
+    - Queue requests during rate limit periods
+    - Provide user feedback about delays
+    - Implement circuit breakers
+    - Have fallback strategies
+  </Accordion>
+  
+  <Accordion title="Monitor and Alert">
+    - Track rate limit usage metrics
+    - Set up alerts before hitting limits
+    - Monitor for patterns in rate limit hits
+    - Review and optimize regularly
+  </Accordion>
+</AccordionGroup>
+
+## Rate Limit Calculator
+
+Use this to estimate your rate limit needs:
+
+```javascript
+function calculateRateLimitNeeds(config) {
+  const {
+    averageMessagesPerUser,
+    concurrentUsers,
+    peakHourMultiplier = 2,
+    pollingInterval = 2 // seconds
+  } = config;
+  
+  // Calculate requests per minute
+  const baseMessagesPerMinute = (averageMessagesPerUser * concurrentUsers) / 60;
+  const pollingRequestsPerMinute = concurrentUsers * (60 / pollingInterval);
+  const totalRequestsPerMinute = baseMessagesPerMinute + pollingRequestsPerMinute;
+  const peakRequestsPerMinute = totalRequestsPerMinute * peakHourMultiplier;
+  
+  // Calculate requests per hour
+  const requestsPerHour = peakRequestsPerMinute * 60;
+  
+  return {
+    estimatedRequestsPerMinute: Math.ceil(peakRequestsPerMinute),
+    estimatedRequestsPerHour: Math.ceil(requestsPerHour),
+    recommendedPlan: peakRequestsPerMinute > 60 ? 'Enterprise' : 'Standard',
+    optimizations: [
+      pollingInterval < 5 && 'Increase polling interval to reduce requests',
+      peakRequestsPerMinute > 40 && 'Implement request batching',
+    ].filter(Boolean)
+  };
+}
+
+// Example usage
+const needs = calculateRateLimitNeeds({
+  averageMessagesPerUser: 20, // per hour
+  concurrentUsers: 100,
+  peakHourMultiplier: 3,
+  pollingInterval: 2
+});
+
+console.log('Rate limit needs:', needs);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/error-handling">
+    Learn how to handle rate limit errors effectively
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/best-practices">
+    Explore production-ready patterns
+  </Card>
+  
+</CardGroup>

@@ -1,0 +1,961 @@
+---
+title: Integration Guide
+description: Complete guide for integrating with Nexus API
+---
+
+# Nexus API Integration Guide
+
+Build powerful AI-powered chat experiences with the Nexus API. This documentation covers everything you need to integrate Nexus agents into your applications.
+
+## Overview
+
+The Nexus API provides a simple REST interface to interact with AI agents configured in your Nexus workspace. With just a few API calls, you can:
+
+- Create chat sessions with AI agents
+- Send and receive messages
+- Access conversation history
+- Manage multiple concurrent sessions
+
+## Quick Start
+
+Get up and running with the Nexus API in just 5 minutes.
+
+### Prerequisites
+
+1. A Nexus account with at least one configured AI agent
+2. An API integration created in your workspace
+3. A generated API key
+
+### Step 1: Create an API Integration
+
+1. Navigate to **Integrations** in your Nexus dashboard
+2. Click **Add Integration** and select **API**
+3. Configure your integration:
+   - Give it a descriptive name
+   - Select the AI agent to connect
+   - Click **Create Integration**
+
+### Step 2: Generate Your API Key
+
+After creating the integration:
+
+1. Click **Generate API Key**
+2. Copy and securely store your API key
+3. **Important**: You won't be able to see this key again
+
+### Step 3: Make Your First API Call
+
+```bash
+curl -X POST https://api.nexusgpt.io/api/public/thread \
+  -H "Content-Type: application/json" \
+  -H "api-key: YOUR_API_KEY" \
+  -d '{"message": "Hello, how can you help me today?"}'
+```
+
+## Authentication
+
+All API requests require authentication using an API key in the request headers.
+
+### API Key Format
+
+```
+api-key: YOUR_API_KEY
+```
+
+The API key is a JWT token that contains:
+- Your integration ID
+- Your organization ID
+- Expiration information (if applicable)
+
+### Security Best Practices
+
+- **Never expose your API key** in client-side code
+- **Rotate keys regularly** for enhanced security
+- **Use environment variables** to store keys
+- **Implement proper error handling** for authentication failures
+
+## API Reference
+
+### Base URL
+
+```
+https://api.nexusgpt.io/api/public
+```
+
+### Endpoints
+
+#### Create Session
+
+Creates a new chat session with your configured AI agent.
+
+**Endpoint:** `POST /thread`
+
+**Headers:**
+```
+Content-Type: application/json
+api-key: YOUR_API_KEY
+```
+
+**Request Body (optional):**
+```json
+{
+  "message": "Initial message to the agent"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "createdAt": "2024-01-20T10:30:00Z"
+}
+```
+
+**Example:**
+
+<CodeGroup>
+
+```javascript Node.js
+const axios = require('axios');
+
+async function createSession(apiKey, initialMessage) {
+  try {
+    const response = await axios.post(
+      'https://api.nexusgpt.io/api/public/thread',
+      { message: initialMessage },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error creating session:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// Usage
+const session = await createSession('YOUR_API_KEY', 'Hello!');
+console.log('Session ID:', session.id);
+```
+
+```python Python
+import requests
+import json
+
+def create_session(api_key, initial_message=None):
+    """Create a new chat session"""
+    url = "https://api.nexusgpt.io/api/public/thread"
+    
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": api_key
+    }
+    
+    data = {}
+    if initial_message:
+        data["message"] = initial_message
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error creating session: {e}")
+        raise
+
+# Usage
+session = create_session("YOUR_API_KEY", "Hello!")
+print(f"Session ID: {session['id']}")
+```
+
+```bash cURL
+curl -X POST https://api.nexusgpt.io/api/public/thread \
+  -H "Content-Type: application/json" \
+  -H "api-key: YOUR_API_KEY" \
+  -d '{"message": "Hello!"}'
+```
+
+</CodeGroup>
+
+#### Send Message
+
+Sends a message to an existing chat session.
+
+**Endpoint:** `POST /thread/:id/messages`
+
+**Headers:**
+```
+Content-Type: application/json
+api-key: YOUR_API_KEY
+```
+
+**URL Parameters:**
+- `id` - The session ID returned from create session
+
+**Request Body:**
+```json
+{
+  "message": "Your message to the agent"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true
+}
+```
+
+**Example:**
+
+<CodeGroup>
+
+```javascript Node.js
+async function sendMessage(apiKey, sessionId, message) {
+  try {
+    const response = await axios.post(
+      `https://api.nexusgpt.io/api/public/thread/${sessionId}/messages`,
+      { message },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': apiKey
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error sending message:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// Usage
+await sendMessage('YOUR_API_KEY', session.id, 'Can you help me with my order?');
+```
+
+```python Python
+def send_message(api_key, session_id, message):
+    """Send a message to an existing session"""
+    url = f"https://api.nexusgpt.io/api/public/thread/{session_id}/messages"
+    
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": api_key
+    }
+    
+    data = {
+        "message": message
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending message: {e}")
+        raise
+
+# Usage
+send_message("YOUR_API_KEY", session_id, "Can you help me with my order?")
+```
+
+```bash cURL
+curl -X POST https://api.nexusgpt.io/api/public/thread/SESSION_ID/messages \
+  -H "Content-Type: application/json" \
+  -H "api-key: YOUR_API_KEY" \
+  -d '{"message": "Can you help me with my order?"}'
+```
+
+</CodeGroup>
+
+#### Get Session
+
+Retrieves information about a specific chat session.
+
+**Endpoint:** `GET /thread/:id`
+
+**Headers:**
+```
+api-key: YOUR_API_KEY
+```
+
+**URL Parameters:**
+- `id` - The session ID
+
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "topic": "Order Support",
+  "status": "ACTIVE",
+  "createdAt": "2024-01-20T10:30:00Z"
+}
+```
+
+#### List Messages
+
+Retrieves messages from a chat session with pagination support.
+
+**Endpoint:** `GET /thread/:id/messages`
+
+**Headers:**
+```
+api-key: YOUR_API_KEY
+```
+
+**URL Parameters:**
+- `id` - The session ID
+
+**Query Parameters:**
+- `limit` (optional) - Number of messages to return (default: 20)
+- `order` (optional) - Sort order: `asc` or `desc` (default: `asc`)
+- `after` (optional) - Cursor for pagination (message ID)
+- `before` (optional) - Cursor for pagination (message ID)
+
+**Response:**
+```json
+[
+  {
+    "id": "msg_123",
+    "content": "Hello! How can I help you today?",
+    "type": "assistant",
+    "createdAt": "2024-01-20T10:30:15Z"
+  },
+  {
+    "id": "msg_124",
+    "content": "I need help with my order",
+    "type": "user",
+    "createdAt": "2024-01-20T10:30:45Z"
+  }
+]
+```
+
+**Example with Pagination:**
+
+<CodeGroup>
+
+```javascript Node.js
+async function getMessages(apiKey, sessionId, options = {}) {
+  const { limit = 20, order = 'asc', after, before } = options;
+  
+  const params = new URLSearchParams({
+    limit: limit.toString(),
+    order,
+    ...(after && { after }),
+    ...(before && { before })
+  });
+  
+  try {
+    const response = await axios.get(
+      `https://api.nexusgpt.io/api/public/thread/${sessionId}/messages?${params}`,
+      {
+        headers: {
+          'api-key': apiKey
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching messages:', error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// Get first 10 messages
+const messages = await getMessages('YOUR_API_KEY', session.id, { limit: 10 });
+
+// Get next page
+const nextPage = await getMessages('YOUR_API_KEY', session.id, { 
+  limit: 10, 
+  after: messages[messages.length - 1].id 
+});
+```
+
+```python Python
+def get_messages(api_key, session_id, limit=20, order='asc', after=None, before=None):
+    """Get messages from a session with pagination"""
+    url = f"https://api.nexusgpt.io/api/public/thread/{session_id}/messages"
+    
+    headers = {
+        "api-key": api_key
+    }
+    
+    params = {
+        "limit": limit,
+        "order": order
+    }
+    
+    if after:
+        params["after"] = after
+    if before:
+        params["before"] = before
+    
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching messages: {e}")
+        raise
+
+# Get first 10 messages
+messages = get_messages("YOUR_API_KEY", session_id, limit=10)
+
+# Get next page
+if messages:
+    next_page = get_messages(
+        "YOUR_API_KEY", 
+        session_id, 
+        limit=10, 
+        after=messages[-1]["id"]
+    )
+```
+
+</CodeGroup>
+
+## Message Types
+
+The API returns different message types to help you properly display the conversation:
+
+### User Messages
+Messages sent by the user:
+```json
+{
+  "id": "msg_123",
+  "content": "Hello, I need help",
+  "type": "user",
+  "createdAt": "2024-01-20T10:30:00Z"
+}
+```
+
+### Assistant Messages
+Responses from the AI agent:
+```json
+{
+  "id": "msg_124",
+  "content": "I'd be happy to help you!",
+  "type": "assistant",
+  "createdAt": "2024-01-20T10:30:15Z"
+}
+```
+
+### Tool Messages
+Results from tool executions:
+```json
+{
+  "id": "msg_125",
+  "content": "Order #12345 found",
+  "type": "tool",
+  "toolCallId": "call_abc123",
+  "createdAt": "2024-01-20T10:30:30Z"
+}
+```
+
+### System Messages
+System notifications and status updates:
+```json
+{
+  "id": "msg_126",
+  "content": "Session started",
+  "type": "system",
+  "createdAt": "2024-01-20T10:30:00Z"
+}
+```
+
+## Error Handling
+
+The API uses standard HTTP status codes to indicate success or failure.
+
+### Status Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| 200 | Success |
+| 400 | Bad Request - Invalid parameters |
+| 401 | Unauthorized - Invalid or missing API key |
+| 404 | Not Found - Session or resource not found |
+| 429 | Too Many Requests - Rate limit exceeded |
+| 500 | Internal Server Error |
+
+### Error Response Format
+
+```json
+{
+  "statusCode": 400,
+  "message": "Invalid session ID",
+  "error": "Bad Request"
+}
+```
+
+### Handling Errors
+
+<CodeGroup>
+
+```javascript Node.js
+async function handleApiCall(apiCall) {
+  try {
+    const result = await apiCall();
+    return result;
+  } catch (error) {
+    if (error.response) {
+      // API returned an error response
+      const { status, data } = error.response;
+      
+      switch (status) {
+        case 401:
+          console.error('Invalid API key');
+          // Handle re-authentication
+          break;
+        case 429:
+          console.error('Rate limit exceeded');
+          // Implement exponential backoff
+          break;
+        case 404:
+          console.error('Resource not found');
+          // Handle missing resource
+          break;
+        default:
+          console.error(`API Error: ${data.message || 'Unknown error'}`);
+      }
+    } else {
+      // Network or other error
+      console.error('Network error:', error.message);
+    }
+    
+    throw error;
+  }
+}
+```
+
+```python Python
+import time
+from typing import Callable, Any
+
+def handle_api_call(api_call: Callable[[], Any], max_retries: int = 3):
+    """Handle API calls with retry logic"""
+    for attempt in range(max_retries):
+        try:
+            return api_call()
+        except requests.exceptions.HTTPError as e:
+            status_code = e.response.status_code
+            
+            if status_code == 401:
+                print("Invalid API key")
+                raise
+            elif status_code == 429:
+                # Rate limited - exponential backoff
+                wait_time = 2 ** attempt
+                print(f"Rate limited. Waiting {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            elif status_code == 404:
+                print("Resource not found")
+                raise
+            else:
+                print(f"API Error: {e.response.text}")
+                raise
+        except requests.exceptions.RequestException as e:
+            print(f"Network error: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(1)
+                continue
+            raise
+    
+    raise Exception("Max retries exceeded")
+```
+
+</CodeGroup>
+
+## Rate Limiting
+
+The API implements rate limiting to ensure fair usage and system stability.
+
+### Rate Limits
+
+- **Requests per minute**: 60
+- **Requests per hour**: 1000
+- **Concurrent sessions**: 100
+
+### Rate Limit Headers
+
+The API returns rate limit information in response headers:
+
+```
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 45
+X-RateLimit-Reset: 1642680000
+```
+
+### Handling Rate Limits
+
+When you exceed the rate limit, you'll receive a 429 status code. Implement exponential backoff:
+
+```javascript
+async function withRetry(fn, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (error.response?.status === 429 && i < maxRetries - 1) {
+        const waitTime = Math.pow(2, i) * 1000; // Exponential backoff
+        console.log(`Rate limited. Waiting ${waitTime}ms...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+```
+
+## Best Practices
+
+### 1. Session Management
+
+- **Reuse sessions** for continued conversations
+- **Store session IDs** securely in your application
+- **Handle session expiration** gracefully
+- **Clean up old sessions** when no longer needed
+
+### 2. Message Handling
+
+- **Poll for new messages** at reasonable intervals
+- **Implement proper pagination** for message history
+- **Handle message types** appropriately in your UI
+- **Show typing indicators** while waiting for responses
+
+### 3. Error Recovery
+
+- **Implement retry logic** with exponential backoff
+- **Cache successful responses** when appropriate
+- **Provide user feedback** for errors
+- **Log errors** for debugging
+
+### 4. Security
+
+- **Never expose API keys** in client-side code
+- **Use HTTPS** for all API calls
+- **Validate user input** before sending to API
+- **Implement proper authentication** in your application
+
+## Complete Example
+
+Here's a complete example of a chat implementation:
+
+<CodeGroup>
+
+```javascript Node.js
+const axios = require('axios');
+
+class NexusChat {
+  constructor(apiKey, baseUrl = 'https://api.nexusgpt.io/api/public') {
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+    this.sessionId = null;
+  }
+
+  async createSession(initialMessage) {
+    try {
+      const response = await axios.post(
+        `${this.baseUrl}/thread`,
+        initialMessage ? { message: initialMessage } : {},
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': this.apiKey
+          }
+        }
+      );
+      
+      this.sessionId = response.data.id;
+      return response.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  async sendMessage(message) {
+    if (!this.sessionId) {
+      throw new Error('No active session. Call createSession first.');
+    }
+
+    try {
+      await axios.post(
+        `${this.baseUrl}/thread/${this.sessionId}/messages`,
+        { message },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': this.apiKey
+          }
+        }
+      );
+      
+      // Wait a moment for the agent to process
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Get the latest messages
+      return await this.getMessages({ limit: 5, order: 'desc' });
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  async getMessages(options = {}) {
+    if (!this.sessionId) {
+      throw new Error('No active session. Call createSession first.');
+    }
+
+    const params = new URLSearchParams({
+      limit: (options.limit || 20).toString(),
+      order: options.order || 'asc',
+      ...(options.after && { after: options.after }),
+      ...(options.before && { before: options.before })
+    });
+
+    try {
+      const response = await axios.get(
+        `${this.baseUrl}/thread/${this.sessionId}/messages?${params}`,
+        {
+          headers: {
+            'api-key': this.apiKey
+          }
+        }
+      );
+      
+      return response.data;
+    } catch (error) {
+      this.handleError(error);
+    }
+  }
+
+  handleError(error) {
+    if (error.response) {
+      const { status, data } = error.response;
+      console.error(`API Error (${status}):`, data.message || data);
+      
+      if (status === 401) {
+        throw new Error('Invalid API key');
+      } else if (status === 429) {
+        throw new Error('Rate limit exceeded. Please try again later.');
+      } else if (status === 404) {
+        throw new Error('Session not found');
+      }
+    } else {
+      console.error('Network error:', error.message);
+    }
+    
+    throw error;
+  }
+}
+
+// Usage example
+async function main() {
+  const chat = new NexusChat('YOUR_API_KEY');
+  
+  try {
+    // Start a new session
+    console.log('Creating session...');
+    await chat.createSession('Hello!');
+    
+    // Send a message
+    console.log('Sending message...');
+    const messages = await chat.sendMessage('Can you help me understand your capabilities?');
+    
+    // Display the conversation
+    console.log('\nConversation:');
+    messages.reverse().forEach(msg => {
+      console.log(`${msg.type}: ${msg.content}`);
+    });
+    
+  } catch (error) {
+    console.error('Chat error:', error.message);
+  }
+}
+
+main();
+```
+
+```python Python
+import requests
+import time
+from typing import Optional, Dict, List, Any
+
+class NexusChat:
+    def __init__(self, api_key: str, base_url: str = "https://api.nexusgpt.io/api/public"):
+        self.api_key = api_key
+        self.base_url = base_url
+        self.session_id: Optional[str] = None
+    
+    def create_session(self, initial_message: Optional[str] = None) -> Dict[str, Any]:
+        """Create a new chat session"""
+        url = f"{self.base_url}/thread"
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": self.api_key
+        }
+        
+        data = {}
+        if initial_message:
+            data["message"] = initial_message
+        
+        try:
+            response = requests.post(url, headers=headers, json=data)
+            response.raise_for_status()
+            
+            result = response.json()
+            self.session_id = result["id"]
+            return result
+            
+        except requests.exceptions.RequestException as e:
+            self._handle_error(e)
+    
+    def send_message(self, message: str) -> List[Dict[str, Any]]:
+        """Send a message and get recent messages"""
+        if not self.session_id:
+            raise ValueError("No active session. Call create_session first.")
+        
+        url = f"{self.base_url}/thread/{self.session_id}/messages"
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": self.api_key
+        }
+        
+        try:
+            # Send the message
+            response = requests.post(url, headers=headers, json={"message": message})
+            response.raise_for_status()
+            
+            # Wait for processing
+            time.sleep(1)
+            
+            # Get recent messages
+            return self.get_messages(limit=5, order="desc")
+            
+        except requests.exceptions.RequestException as e:
+            self._handle_error(e)
+    
+    def get_messages(
+        self, 
+        limit: int = 20, 
+        order: str = "asc", 
+        after: Optional[str] = None,
+        before: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Get messages from the current session"""
+        if not self.session_id:
+            raise ValueError("No active session. Call create_session first.")
+        
+        url = f"{self.base_url}/thread/{self.session_id}/messages"
+        headers = {"api-key": self.api_key}
+        
+        params = {
+            "limit": limit,
+            "order": order
+        }
+        if after:
+            params["after"] = after
+        if before:
+            params["before"] = before
+        
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            self._handle_error(e)
+    
+    def _handle_error(self, error: requests.exceptions.RequestException):
+        """Handle API errors"""
+        if hasattr(error, 'response') and error.response is not None:
+            status = error.response.status_code
+            message = error.response.json().get('message', 'Unknown error')
+            
+            if status == 401:
+                raise ValueError("Invalid API key")
+            elif status == 429:
+                raise ValueError("Rate limit exceeded. Please try again later.")
+            elif status == 404:
+                raise ValueError("Session not found")
+            else:
+                raise ValueError(f"API Error ({status}): {message}")
+        else:
+            raise ValueError(f"Network error: {str(error)}")
+
+# Usage example
+def main():
+    chat = NexusChat("YOUR_API_KEY")
+    
+    try:
+        # Start a new session
+        print("Creating session...")
+        chat.create_session("Hello!")
+        
+        # Send a message
+        print("Sending message...")
+        messages = chat.send_message("Can you help me understand your capabilities?")
+        
+        # Display the conversation
+        print("\nConversation:")
+        for msg in reversed(messages):
+            print(f"{msg['type']}: {msg['content']}")
+            
+    except Exception as e:
+        print(f"Chat error: {e}")
+
+if __name__ == "__main__":
+    main()
+```
+
+</CodeGroup>
+
+## Troubleshooting
+
+### Common Issues
+
+#### 401 Unauthorized
+- **Cause**: Invalid or missing API key
+- **Solution**: Verify your API key is correct and included in headers
+
+#### 404 Not Found
+- **Cause**: Invalid session ID or session expired
+- **Solution**: Create a new session and retry
+
+#### 429 Too Many Requests
+- **Cause**: Rate limit exceeded
+- **Solution**: Implement exponential backoff and retry
+
+#### Empty Response
+- **Cause**: Agent may still be processing
+- **Solution**: Wait longer before fetching messages
+
+### Debug Checklist
+
+1. ✓ API key is valid and not expired
+2. ✓ Using correct base URL
+3. ✓ Headers are properly formatted
+4. ✓ Session ID is valid
+5. ✓ Request body is valid JSON
+6. ✓ Rate limits not exceeded
+
+## Support
+
+For additional support:
+
+- **Documentation**: Check our full documentation at docs.nexus.com
+- **Community**: Join our Discord server
+- **Email**: support@nexus.com
+- **Issues**: Report bugs on GitHub
+
+---
+
+*Last updated: January 2024*

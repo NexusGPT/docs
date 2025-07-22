@@ -1,0 +1,320 @@
+---
+title: Authentication
+description: Secure your API requests with proper authentication
+---
+
+# Authentication
+
+The Nexus API uses API keys to authenticate requests. This guide covers everything you need to know about authentication, from generating keys to implementing security best practices.
+
+## API Key Overview
+
+API keys are JWT (JSON Web Token) based credentials that:
+- Uniquely identify your integration
+- Contain your organization and agent information
+- Can be revoked or regenerated at any time
+- Should be kept secure and never exposed publicly
+
+## Generating API Keys
+
+<Steps>
+  <Step title="Navigate to Integrations">
+    Log in to your Nexus dashboard and go to the **Integrations** section
+  </Step>
+  
+  <Step title="Create API Integration">
+    Click **Add Integration** and select **API** as the integration type
+  </Step>
+  
+  <Step title="Configure Integration">
+    - Give your integration a descriptive name
+    - Select the AI agent to connect
+    - Choose appropriate permissions
+    - Click **Create Integration**
+  </Step>
+  
+  <Step title="Generate Key">
+    Click **Generate API Key** and securely store the key
+    
+    <Warning>
+      This is the only time you'll see the full API key. Store it securely immediately.
+    </Warning>
+  </Step>
+</Steps>
+
+## Using API Keys
+
+### Request Headers
+
+Include your API key in the request headers:
+
+```http
+POST https://api.nexusgpt.io/api/public/thread
+Content-Type: application/json
+api-key: YOUR_API_KEY
+```
+
+### Example Implementations
+
+<CodeGroup>
+
+```javascript Node.js
+const headers = {
+  'Content-Type': 'application/json',
+  'api-key': process.env.NEXUS_API_KEY
+};
+
+const response = await fetch('https://api.nexusgpt.io/api/public/thread', {
+  method: 'POST',
+  headers: headers,
+  body: JSON.stringify({ message: 'Hello' })
+});
+```
+
+```python Python
+import os
+import requests
+
+headers = {
+    'Content-Type': 'application/json',
+    'api-key': os.environ.get('NEXUS_API_KEY')
+}
+
+response = requests.post(
+    'https://api.nexusgpt.io/api/public/thread',
+    headers=headers,
+    json={'message': 'Hello'}
+)
+```
+
+```bash cURL
+curl -X POST https://api.nexusgpt.io/api/public/thread \
+  -H "Content-Type: application/json" \
+  -H "api-key: $NEXUS_API_KEY" \
+  -d '{"message": "Hello"}'
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "net/http"
+    "os"
+)
+
+func main() {
+    client := &http.Client{}
+    
+    data := map[string]string{"message": "Hello"}
+    jsonData, _ := json.Marshal(data)
+    
+    req, _ := http.NewRequest("POST", 
+        "https://api.nexusgpt.io/api/public/thread", 
+        bytes.NewBuffer(jsonData))
+    
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("api-key", os.Getenv("NEXUS_API_KEY"))
+    
+    resp, _ := client.Do(req)
+    defer resp.Body.Close()
+}
+```
+
+</CodeGroup>
+
+## Security Best Practices
+
+### 1. Environment Variables
+
+Never hardcode API keys in your source code. Use environment variables:
+
+```javascript
+// ❌ Bad
+const apiKey = 'nxs_abc123...';
+
+// ✅ Good
+const apiKey = process.env.NEXUS_API_KEY;
+```
+
+### 2. Server-Side Only
+
+<Warning>
+Never expose API keys in client-side code, mobile apps, or anywhere accessible to end users.
+</Warning>
+
+Always make API calls from your backend:
+
+```javascript
+// ❌ Bad: Client-side code
+// This exposes your API key to anyone who views the source
+fetch('https://api.nexusgpt.io/api/public/thread', {
+  headers: { 'api-key': 'nxs_abc123...' }
+});
+
+// ✅ Good: Server-side proxy
+// Client calls your backend, which then calls Nexus API
+app.post('/api/chat', async (req, res) => {
+  const response = await callNexusAPI(req.body.message);
+  res.json(response);
+});
+```
+
+### 3. Key Rotation
+
+Regularly rotate your API keys to maintain security:
+
+1. Generate a new API key
+2. Update your application to use the new key
+3. Verify the new key is working
+4. Revoke the old key
+
+### 4. Restrict Permissions
+
+When creating integrations, only grant the minimum permissions required:
+- Read-only access for analytics
+- Write access only for agents that need to send messages
+- Admin access only when absolutely necessary
+
+### 5. Monitor Usage
+
+Regularly review your API usage to detect any unusual activity:
+- Check request patterns
+- Monitor rate limit hits
+- Review error logs
+- Set up alerts for anomalies
+
+## Authentication Errors
+
+### 401 Unauthorized
+
+This error occurs when:
+- API key is missing from headers
+- API key is invalid or malformed
+- API key has been revoked
+
+**Example Response:**
+```json
+{
+  "statusCode": 401,
+  "message": "Invalid API key",
+  "error": "Unauthorized"
+}
+```
+
+**Solution:**
+1. Verify the API key is included in headers
+2. Check the key hasn't been revoked
+3. Ensure no extra spaces or characters
+4. Generate a new key if needed
+
+### 403 Forbidden
+
+This error occurs when:
+- API key lacks required permissions
+- Integration is disabled
+- Agent access is restricted
+
+**Example Response:**
+```json
+{
+  "statusCode": 403,
+  "message": "Insufficient permissions",
+  "error": "Forbidden"
+}
+```
+
+**Solution:**
+1. Check integration permissions
+2. Verify agent is active
+3. Contact support if issues persist
+
+## API Key Management
+
+### Viewing Keys
+
+You can view your API keys in the dashboard:
+1. Navigate to **Integrations**
+2. Click on your integration
+3. View key metadata (not the full key)
+
+### Revoking Keys
+
+To revoke a compromised key:
+1. Go to your integration settings
+2. Click **Revoke Key**
+3. Generate a new key immediately
+4. Update your application
+
+### Multiple Keys
+
+You can have multiple API keys for different environments:
+- Development key with limited rate limits
+- Staging key for testing
+- Production key with full access
+
+## Advanced Authentication
+
+### JWT Claims
+
+Your API key is a JWT containing:
+```json
+{
+  "integrationId": "int_abc123",
+  "organizationId": "org_xyz789",
+  "agentId": "agt_def456",
+  "permissions": ["read", "write"],
+  "exp": 1735689600
+}
+```
+
+### Custom Headers
+
+For additional security, you can include custom headers:
+```http
+api-key: YOUR_API_KEY
+X-Request-ID: unique-request-id
+X-Client-Version: 1.0.0
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="API key not working">
+    1. Verify the key is copied correctly
+    2. Check for extra spaces or line breaks
+    3. Ensure the key hasn't expired
+    4. Confirm the integration is active
+  </Accordion>
+  
+  <Accordion title="Getting 401 errors">
+    1. Check header name is exactly `api-key`
+    2. Verify the key format
+    3. Ensure no "Bearer" prefix
+    4. Test with a fresh key
+  </Accordion>
+  
+  <Accordion title="Intermittent authentication failures">
+    1. Check for rate limiting
+    2. Verify server time sync
+    3. Review network connectivity
+    4. Monitor for key rotation issues
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+Now that you understand authentication, you're ready to:
+
+<CardGroup cols={2}>
+  <Card title="Make Your First Call" icon="rocket" href="/quickstart">
+    Follow our quickstart guide
+  </Card>
+  
+  <Card title="Explore Endpoints" icon="code" href="/api-reference">
+    Learn about available API endpoints
+  </Card>
+</CardGroup>

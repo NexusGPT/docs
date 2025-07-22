@@ -1,0 +1,283 @@
+---
+title: Create Session
+api: POST https://api.nexusgpt.io/api/public/thread
+description: Create a new chat session with your AI agent
+---
+
+# Create Session
+
+Creates a new chat session with your configured AI agent. This establishes a conversation thread that maintains context across multiple messages.
+
+## Endpoint
+
+```
+POST https://api.nexusgpt.io/api/public/thread
+```
+
+## Authentication
+
+<ParamField header="api-key" type="string" required>
+  Your Nexus API key for authentication
+</ParamField>
+
+## Request Body
+
+<ParamField body="message" type="string">
+  Optional initial message to send to the agent when creating the session. This can help set the context for the conversation.
+</ParamField>
+
+<ResponseExample>
+```json Success Response
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "createdAt": "2024-01-20T10:30:00Z"
+}
+```
+</ResponseExample>
+
+## Response Fields
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for the created session. You'll need this ID to send messages and retrieve conversation history.
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp indicating when the session was created
+</ResponseField>
+
+## Example Usage
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.nexusgpt.io/api/public/thread \
+  -H "Content-Type: application/json" \
+  -H "api-key: YOUR_API_KEY" \
+  -d '{"message": "Hello, I need help with my account"}'
+```
+
+```javascript Node.js
+const axios = require('axios');
+
+async function createSession(initialMessage) {
+  try {
+    const response = await axios.post(
+      'https://api.nexusgpt.io/api/public/thread',
+      { message: initialMessage },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': process.env.NEXUS_API_KEY
+        }
+      }
+    );
+    
+    console.log('Session created:', response.data.id);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating session:', error.response?.data);
+    throw error;
+  }
+}
+
+// Create session with initial message
+const session = await createSession('Hello, I need help with my account');
+```
+
+```python Python
+import os
+import requests
+
+def create_session(initial_message=None):
+    """Create a new chat session"""
+    url = "https://api.nexusgpt.io/api/public/thread"
+    
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": os.environ.get("NEXUS_API_KEY")
+    }
+    
+    data = {}
+    if initial_message:
+        data["message"] = initial_message
+    
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        response.raise_for_status()
+        
+        session = response.json()
+        print(f"Session created: {session['id']}")
+        return session
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error creating session: {e}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response.text}")
+        raise
+
+# Create session with initial message
+session = create_session("Hello, I need help with my account")
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+)
+
+type CreateSessionRequest struct {
+    Message string `json:"message,omitempty"`
+}
+
+type SessionResponse struct {
+    ID        string `json:"id"`
+    CreatedAt string `json:"createdAt"`
+}
+
+func createSession(initialMessage string) (*SessionResponse, error) {
+    url := "https://api.nexusgpt.io/api/public/thread"
+    
+    requestBody := CreateSessionRequest{}
+    if initialMessage != "" {
+        requestBody.Message = initialMessage
+    }
+    
+    jsonData, err := json.Marshal(requestBody)
+    if err != nil {
+        return nil, err
+    }
+    
+    req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+    if err != nil {
+        return nil, err
+    }
+    
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("api-key", os.Getenv("NEXUS_API_KEY"))
+    
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+    
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+    
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("API error: %s", string(body))
+    }
+    
+    var session SessionResponse
+    if err := json.Unmarshal(body, &session); err != nil {
+        return nil, err
+    }
+    
+    fmt.Printf("Session created: %s\n", session.ID)
+    return &session, nil
+}
+```
+
+</CodeGroup>
+
+## Common Use Cases
+
+### 1. Customer Support Bot
+```javascript
+// Create a session for customer support
+const session = await createSession(
+  "Hello, I'm having trouble with my recent order #12345"
+);
+```
+
+### 2. Product Assistant
+```javascript
+// Create a session for product inquiries
+const session = await createSession(
+  "I'm looking for recommendations on running shoes for marathons"
+);
+```
+
+### 3. Technical Support
+```javascript
+// Create a session for technical assistance
+const session = await createSession(
+  "My application is showing an error when I try to export data"
+);
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 401 Unauthorized
+{
+  "statusCode": 401,
+  "message": "Invalid API key",
+  "error": "Unauthorized"
+}
+```
+
+```json 400 Bad Request
+{
+  "statusCode": 400,
+  "message": "Invalid request body",
+  "error": "Bad Request"
+}
+```
+
+```json 429 Too Many Requests
+{
+  "statusCode": 429,
+  "message": "Rate limit exceeded",
+  "error": "Too Many Requests"
+}
+```
+
+```json 500 Internal Server Error
+{
+  "statusCode": 500,
+  "message": "An unexpected error occurred",
+  "error": "Internal Server Error"
+}
+```
+</ResponseExample>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Session Lifecycle">
+    - Sessions remain active for 24 hours of inactivity
+    - Reuse sessions for continued conversations
+    - Create new sessions for unrelated topics
+    - Store session IDs securely in your application
+  </Accordion>
+  
+  <Accordion title="Initial Messages">
+    - Use initial messages to provide context
+    - Include relevant details upfront
+    - Set clear expectations for the conversation
+    - Avoid sensitive information in initial messages
+  </Accordion>
+  
+  <Accordion title="Error Handling">
+    - Always check for error responses
+    - Implement retry logic for transient failures
+    - Log session IDs for debugging
+    - Have fallback behavior for session creation failures
+  </Accordion>
+</AccordionGroup>
+
+## Related Endpoints
+
+- [Send Message](/api-reference/nexus-endpoints/send-message) - Send messages to an existing session
+- [Get Session](/api-reference/nexus-endpoints/get-session) - Retrieve session information
+- [List Messages](/api-reference/nexus-endpoints/list-messages) - Get conversation history

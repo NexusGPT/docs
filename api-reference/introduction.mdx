@@ -1,33 +1,70 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: API Reference
+description: Explore all available Nexus API endpoints
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+# API Reference
 
-## Welcome
+Welcome to the Nexus API Reference. This section contains detailed documentation for all available API endpoints.
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
+## Base URL
 
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
+All API requests should be made to:
+
+```
+https://api.nexusgpt.io/api/public
+```
+
+## Available Endpoints
+
+The Nexus API provides the following endpoints:
+
+<CardGroup cols={2}>
+  <Card title="Create Session" icon="plus" href="/api-reference/nexus-endpoints/create-session">
+    POST /sessions - Initialize a new chat session
+  </Card>
+  
+  <Card title="Send Message" icon="message" href="/api-reference/nexus-endpoints/send-message">
+    POST /messages - Send messages to an active session
+  </Card>
+  
+  <Card title="Get Session" icon="eye" href="/api-reference/nexus-endpoints/get-session">
+    GET /sessions/{id} - Retrieve session information
+  </Card>
+  
+  <Card title="List Messages" icon="list" href="/api-reference/nexus-endpoints/list-messages">
+    GET /messages - Get conversation history with pagination
+  </Card>
+</CardGroup>
 
 ## Authentication
 
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+All endpoints require authentication via API key in the `api-key` header:
+
+```http
+api-key: YOUR_API_KEY
+```
+
+## Response Format
+
+All endpoints return JSON responses with consistent structure:
 
 ```json
-"security": [
-  {
-    "bearerAuth": []
+{
+  "success": true,
+  "data": {
+    // Endpoint-specific response data
   }
-]
+}
 ```
+
+## Need More Information?
+
+For a comprehensive integration guide including authentication, error handling, and best practices, see the [Nexus API Integration Documentation](/NEXUS_API_DOCUMENTATION).
+
+## Quick Links
+
+- [Authentication Guide](/authentication) - Detailed authentication setup
+- [Error Handling](/error-handling) - Handle API errors effectively  
+- [Rate Limiting](/rate-limiting) - Understand rate limits
+- [SDK Examples](/sdk-examples) - Code examples in multiple languages

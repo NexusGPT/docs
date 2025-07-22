@@ -1,0 +1,831 @@
+---
+title: Best Practices
+description: Production-ready patterns and guidelines for Nexus API integration
+---
+
+# Best Practices
+
+This guide provides comprehensive best practices for building robust, scalable, and maintainable applications with the Nexus API. Follow these guidelines to ensure your integration is production-ready.
+
+## Architecture Patterns
+
+### 1. Service Layer Pattern
+
+Separate your API integration logic from your business logic:
+
+```javascript
+// services/nexusService.js
+class NexusService {
+  constructor(apiKey, config = {}) {
+    this.client = new NexusClient(apiKey);
+    this.config = {
+      maxRetries: 3,
+      timeout: 30000,
+      cacheEnabled: true,
+      ...config
+    };
+    this.cache = new CacheManager();
+    this.rateLimiter = new RateLimiter();
+  }
+
+  async createConversation(userId, initialMessage) {
+    try {
+      // Check for existing session
+      const existingSession = await this.cache.get(`session:${userId}`);
+      if (existingSession && await this.isSessionValid(existingSession)) {
+        return existingSession;
+      }
+
+      // Create new session
+      const session = await this.rateLimiter.execute(() =>
+        this.client.createSession(initialMessage)
+      );
+
+      // Cache session
+      await this.cache.set(`session:${userId}`, session, 3600);
+
+      // Log for analytics
+      await this.logEvent('session_created', { userId, sessionId: session.id });
+
+      return session;
+    } catch (error) {
+      await this.handleError(error, { userId, action: 'createConversation' });
+      throw error;
+    }
+  }
+
+  async sendMessage(userId, message) {
+    const session = await this.getOrCreateSession(userId);
+    
+    return this.rateLimiter.execute(() =>
+      this.client.sendMessage(session.id, message)
+    );
+  }
+}
+
+// controllers/chatController.js
+class ChatController {
+  constructor(nexusService) {
+    this.nexusService = nexusService;
+  }
+
+  async handleMessage(req, res) {
+    try {
+      const { userId } = req.user;
+      const { message } = req.body;
+
+      // Validate input
+      if (!message || message.trim().length === 0) {
+        return res.status(400).json({ error: 'Message is required' });
+      }
+
+      // Process message
+      await this.nexusService.sendMessage(userId, message);
+      
+      // Get response
+      const response = await this.nexusService.waitForResponse(userId);
+      
+      res.json({ success: true, response });
+    } catch (error) {
+      res.status(error.status || 500).json({ 
+        error: error.message || 'Internal server error' 
+      });
+    }
+  }
+}
+```
+
+### 2. Repository Pattern
+
+Abstract data access for better testability:
+
+```typescript
+// repositories/sessionRepository.ts
+interface SessionRepository {
+  create(userId: string, sessionId: string): Promise<void>;
+  findByUserId(userId: string): Promise<string | null>;
+  update(userId: string, sessionId: string): Promise<void>;
+  delete(userId: string): Promise<void>;
+}
+
+class RedisSessionRepository implements SessionRepository {
+  constructor(private redis: RedisClient) {}
+
+  async create(userId: string, sessionId: string): Promise<void> {
+    await this.redis.setex(
+      `session:${userId}`,
+      86400, // 24 hours
+      sessionId
+    );
+  }
+
+  async findByUserId(userId: string): Promise<string | null> {
+    return this.redis.get(`session:${userId}`);
+  }
+
+  async update(userId: string, sessionId: string): Promise<void> {
+    await this.create(userId, sessionId); // Same as create in Redis
+  }
+
+  async delete(userId: string): Promise<void> {
+    await this.redis.del(`session:${userId}`);
+  }
+}
+
+// In production
+const sessionRepo = new RedisSessionRepository(redisClient);
+// In tests
+const sessionRepo = new InMemorySessionRepository();
+```
+
+### 3. Event-Driven Architecture
+
+Use events for loose coupling and better scalability:
+
+```javascript
+// events/messageEvents.js
+const EventEmitter = require('events');
+
+class MessageEventBus extends EventEmitter {
+  emitMessageReceived(userId, message) {
+    this.emit('message:received', { userId, message, timestamp: Date.now() });
+  }
+
+  emitResponseGenerated(userId, response) {
+    this.emit('response:generated', { userId, response, timestamp: Date.now() });
+  }
+
+  emitError(userId, error) {
+    this.emit('error:occurred', { userId, error, timestamp: Date.now() });
+  }
+}
+
+const messageEventBus = new MessageEventBus();
+
+// Subscribe to events
+messageEventBus.on('message:received', async ({ userId, message }) => {
+  // Log analytics
+  await analytics.track('message_received', { userId, messageLength: message.length });
+  
+  // Update user activity
+  await userService.updateLastActivity(userId);
+});
+
+messageEventBus.on('response:generated', async ({ userId, response }) => {
+  // Send push notification
+  await notificationService.notify(userId, 'New message from assistant');
+  
+  // Update conversation metrics
+  await metricsService.incrementMessageCount(userId);
+});
+
+messageEventBus.on('error:occurred', async ({ userId, error }) => {
+  // Log to error tracking
+  await errorTracking.logError(error, { userId });
+  
+  // Alert if critical
+  if (error.severity === 'critical') {
+    await alerting.sendAlert('Critical error in chat service', error);
+  }
+});
+```
+
+## Security Best Practices
+
+### 1. API Key Management
+
+```javascript
+// config/security.js
+class SecureConfig {
+  constructor() {
+    this.validateEnvironment();
+  }
+
+  validateEnvironment() {
+    const required = ['NEXUS_API_KEY', 'ENCRYPTION_KEY'];
+    const missing = required.filter(key => !process.env[key]);
+    
+    if (missing.length > 0) {
+      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
+  }
+
+  get apiKey() {
+    // In production, consider using a secrets manager
+    return this.decrypt(process.env.NEXUS_API_KEY_ENCRYPTED);
+  }
+
+  decrypt(encryptedValue) {
+    // Implement decryption logic
+    const crypto = require('crypto');
+    const algorithm = 'aes-256-gcm';
+    const key = Buffer.from(process.env.ENCRYPTION_KEY, 'hex');
+    
+    // Decryption implementation...
+    return decryptedValue;
+  }
+}
+
+// Rotate keys periodically
+class ApiKeyRotation {
+  async rotateKeys() {
+    try {
+      // Generate new key
+      const newKey = await this.generateNewApiKey();
+      
+      // Test new key
+      await this.testApiKey(newKey);
+      
+      // Update in secrets manager
+      await this.updateSecrets(newKey);
+      
+      // Update application
+      await this.reloadConfiguration();
+      
+      // Revoke old key after grace period
+      setTimeout(() => this.revokeOldKey(), 3600000); // 1 hour
+      
+    } catch (error) {
+      console.error('Key rotation failed:', error);
+      // Alert operations team
+    }
+  }
+}
+```
+
+### 2. Input Validation and Sanitization
+
+```javascript
+const validator = require('validator');
+const DOMPurify = require('isomorphic-dompurify');
+
+class MessageValidator {
+  static validate(message) {
+    const errors = [];
+
+    // Check if empty
+    if (!message || message.trim().length === 0) {
+      errors.push('Message cannot be empty');
+    }
+
+    // Check length
+    if (message.length > 4000) {
+      errors.push('Message exceeds maximum length of 4000 characters');
+    }
+
+    // Check for malicious content
+    if (this.containsSuspiciousPatterns(message)) {
+      errors.push('Message contains suspicious content');
+    }
+
+    // Sanitize HTML/scripts
+    const sanitized = DOMPurify.sanitize(message, { 
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: [] 
+    });
+
+    if (sanitized !== message) {
+      errors.push('Message contains disallowed HTML content');
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      sanitized
+    };
+  }
+
+  static containsSuspiciousPatterns(message) {
+    const suspiciousPatterns = [
+      /<script/i,
+      /javascript:/i,
+      /on\w+\s*=/i, // Event handlers
+      /\beval\s*\(/i,
+      /\bexec\s*\(/i
+    ];
+
+    return suspiciousPatterns.some(pattern => pattern.test(message));
+  }
+}
+
+// Usage in middleware
+function validateMessageMiddleware(req, res, next) {
+  const { message } = req.body;
+  const validation = MessageValidator.validate(message);
+
+  if (!validation.isValid) {
+    return res.status(400).json({
+      error: 'Invalid message',
+      details: validation.errors
+    });
+  }
+
+  // Use sanitized message
+  req.body.message = validation.sanitized;
+  next();
+}
+```
+
+### 3. Rate Limiting per User
+
+```javascript
+class UserRateLimiter {
+  constructor(redisClient) {
+    this.redis = redisClient;
+    this.limits = {
+      messagesPerMinute: 10,
+      messagesPerHour: 100,
+      sessionsPerDay: 5
+    };
+  }
+
+  async checkMessageLimit(userId) {
+    const now = Date.now();
+    const minuteKey = `rate:message:minute:${userId}:${Math.floor(now / 60000)}`;
+    const hourKey = `rate:message:hour:${userId}:${Math.floor(now / 3600000)}`;
+
+    // Check minute limit
+    const minuteCount = await this.redis.incr(minuteKey);
+    if (minuteCount === 1) {
+      await this.redis.expire(minuteKey, 60);
+    }
+
+    if (minuteCount > this.limits.messagesPerMinute) {
+      throw new Error('Rate limit exceeded: Too many messages per minute');
+    }
+
+    // Check hour limit
+    const hourCount = await this.redis.incr(hourKey);
+    if (hourCount === 1) {
+      await this.redis.expire(hourKey, 3600);
+    }
+
+    if (hourCount > this.limits.messagesPerHour) {
+      throw new Error('Rate limit exceeded: Too many messages per hour');
+    }
+
+    return {
+      minuteRemaining: this.limits.messagesPerMinute - minuteCount,
+      hourRemaining: this.limits.messagesPerHour - hourCount
+    };
+  }
+}
+```
+
+## Performance Optimization
+
+### 1. Connection Management
+
+```javascript
+// Singleton HTTP client with connection pooling
+class HttpClientManager {
+  constructor() {
+    if (HttpClientManager.instance) {
+      return HttpClientManager.instance;
+    }
+
+    this.client = axios.create({
+      baseURL: 'https://api.nexusgpt.io/api/public',
+      timeout: 30000,
+      httpAgent: new http.Agent({
+        keepAlive: true,
+        keepAliveMsecs: 30000,
+        maxSockets: 50,
+        maxFreeSockets: 10
+      }),
+      httpsAgent: new https.Agent({
+        keepAlive: true,
+        keepAliveMsecs: 30000,
+        maxSockets: 50,
+        maxFreeSockets: 10
+      })
+    });
+
+    // Add request/response interceptors
+    this.setupInterceptors();
+
+    HttpClientManager.instance = this;
+  }
+
+  setupInterceptors() {
+    // Request interceptor for timing
+    this.client.interceptors.request.use(config => {
+      config.metadata = { startTime: new Date() };
+      return config;
+    });
+
+    // Response interceptor for metrics
+    this.client.interceptors.response.use(
+      response => {
+        const duration = new Date() - response.config.metadata.startTime;
+        metrics.recordHttpDuration(response.config.url, duration);
+        return response;
+      },
+      error => {
+        if (error.config?.metadata) {
+          const duration = new Date() - error.config.metadata.startTime;
+          metrics.recordHttpError(error.config.url, error.response?.status, duration);
+        }
+        return Promise.reject(error);
+      }
+    );
+  }
+
+  getInstance() {
+    return this.client;
+  }
+}
+```
+
+### 2. Caching Strategy
+
+```javascript
+class IntelligentCache {
+  constructor(redis) {
+    this.redis = redis;
+    this.strategies = {
+      session: { ttl: 3600, pattern: 'session:*' },
+      messages: { ttl: 300, pattern: 'messages:*' },
+      user: { ttl: 1800, pattern: 'user:*' }
+    };
+  }
+
+  async get(key, fetchFunction) {
+    // Try cache first
+    const cached = await this.redis.get(key);
+    if (cached) {
+      metrics.recordCacheHit(key);
+      return JSON.parse(cached);
+    }
+
+    // Cache miss - fetch data
+    metrics.recordCacheMiss(key);
+    const data = await fetchFunction();
+
+    // Store in cache with appropriate TTL
+    const strategy = this.getStrategy(key);
+    await this.redis.setex(
+      key,
+      strategy.ttl,
+      JSON.stringify(data)
+    );
+
+    return data;
+  }
+
+  async invalidate(pattern) {
+    const keys = await this.redis.keys(pattern);
+    if (keys.length > 0) {
+      await this.redis.del(...keys);
+    }
+  }
+
+  getStrategy(key) {
+    for (const [name, strategy] of Object.entries(this.strategies)) {
+      if (key.startsWith(name)) {
+        return strategy;
+      }
+    }
+    return { ttl: 300 }; // Default 5 minutes
+  }
+
+  // Warm up cache for frequently accessed data
+  async warmUp(userIds) {
+    const promises = userIds.map(userId => 
+      this.get(`session:${userId}`, () => sessionService.getSession(userId))
+    );
+    await Promise.all(promises);
+  }
+}
+```
+
+### 3. Batch Processing
+
+```javascript
+class MessageBatcher {
+  constructor(processFunction, options = {}) {
+    this.processFunction = processFunction;
+    this.options = {
+      maxBatchSize: 10,
+      maxWaitTime: 1000, // 1 second
+      ...options
+    };
+    this.queue = [];
+    this.timeout = null;
+  }
+
+  async add(item) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ item, resolve, reject });
+
+      if (this.queue.length >= this.options.maxBatchSize) {
+        this.flush();
+      } else if (!this.timeout) {
+        this.timeout = setTimeout(() => this.flush(), this.options.maxWaitTime);
+      }
+    });
+  }
+
+  async flush() {
+    if (this.timeout) {
+      clearTimeout(this.timeout);
+      this.timeout = null;
+    }
+
+    if (this.queue.length === 0) return;
+
+    const batch = this.queue.splice(0, this.options.maxBatchSize);
+    const items = batch.map(({ item }) => item);
+
+    try {
+      const results = await this.processFunction(items);
+      
+      batch.forEach(({ resolve }, index) => {
+        resolve(results[index]);
+      });
+    } catch (error) {
+      batch.forEach(({ reject }) => {
+        reject(error);
+      });
+    }
+
+    // Process remaining items
+    if (this.queue.length > 0) {
+      this.flush();
+    }
+  }
+}
+
+// Usage
+const messageBatcher = new MessageBatcher(async (messages) => {
+  // Process multiple messages in one API call
+  return Promise.all(messages.map(msg => 
+    nexusClient.sendMessage(msg.sessionId, msg.content)
+  ));
+});
+
+// Add messages to batch
+await messageBatcher.add({ sessionId: '123', content: 'Hello' });
+```
+
+## Monitoring and Observability
+
+### 1. Structured Logging
+
+```javascript
+const winston = require('winston');
+
+class StructuredLogger {
+  constructor() {
+    this.logger = winston.createLogger({
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json()
+      ),
+      transports: [
+        new winston.transports.Console(),
+        new winston.transports.File({ filename: 'nexus-api.log' })
+      ]
+    });
+  }
+
+  logApiCall(method, endpoint, userId, duration, status) {
+    this.logger.info('API_CALL', {
+      method,
+      endpoint,
+      userId,
+      duration,
+      status,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  logError(error, context) {
+    this.logger.error('API_ERROR', {
+      error: {
+        message: error.message,
+        stack: error.stack,
+        code: error.code
+      },
+      context,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  logMetrics(metrics) {
+    this.logger.info('METRICS', {
+      ...metrics,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+```
+
+### 2. Health Checks
+
+```javascript
+class HealthCheckService {
+  async checkHealth() {
+    const checks = {
+      api: await this.checkApi(),
+      redis: await this.checkRedis(),
+      database: await this.checkDatabase()
+    };
+
+    const healthy = Object.values(checks).every(check => check.healthy);
+
+    return {
+      status: healthy ? 'healthy' : 'unhealthy',
+      timestamp: new Date().toISOString(),
+      checks
+    };
+  }
+
+  async checkApi() {
+    try {
+      const start = Date.now();
+      const session = await nexusClient.getSession('health-check-session');
+      const duration = Date.now() - start;
+
+      return {
+        healthy: true,
+        duration,
+        message: 'API is responsive'
+      };
+    } catch (error) {
+      return {
+        healthy: false,
+        error: error.message,
+        message: 'API is not responsive'
+      };
+    }
+  }
+
+  async checkRedis() {
+    try {
+      await redis.ping();
+      return {
+        healthy: true,
+        message: 'Redis is connected'
+      };
+    } catch (error) {
+      return {
+        healthy: false,
+        error: error.message,
+        message: 'Redis connection failed'
+      };
+    }
+  }
+}
+
+// Health check endpoint
+app.get('/health', async (req, res) => {
+  const health = await healthCheckService.checkHealth();
+  const statusCode = health.status === 'healthy' ? 200 : 503;
+  res.status(statusCode).json(health);
+});
+```
+
+## Testing Strategies
+
+### 1. Unit Testing
+
+```javascript
+// __tests__/nexusService.test.js
+describe('NexusService', () => {
+  let nexusService;
+  let mockClient;
+  let mockCache;
+
+  beforeEach(() => {
+    mockClient = {
+      createSession: jest.fn(),
+      sendMessage: jest.fn()
+    };
+    mockCache = {
+      get: jest.fn(),
+      set: jest.fn()
+    };
+    
+    nexusService = new NexusService(mockClient, mockCache);
+  });
+
+  describe('createConversation', () => {
+    it('should return cached session if valid', async () => {
+      const cachedSession = { id: 'cached-123', valid: true };
+      mockCache.get.mockResolvedValue(cachedSession);
+
+      const result = await nexusService.createConversation('user-123');
+
+      expect(result).toEqual(cachedSession);
+      expect(mockClient.createSession).not.toHaveBeenCalled();
+    });
+
+    it('should create new session if cache miss', async () => {
+      mockCache.get.mockResolvedValue(null);
+      const newSession = { id: 'new-123' };
+      mockClient.createSession.mockResolvedValue(newSession);
+
+      const result = await nexusService.createConversation('user-123', 'Hello');
+
+      expect(mockClient.createSession).toHaveBeenCalledWith('Hello');
+      expect(mockCache.set).toHaveBeenCalledWith(
+        'session:user-123',
+        newSession,
+        3600
+      );
+      expect(result).toEqual(newSession);
+    });
+  });
+});
+```
+
+### 2. Integration Testing
+
+```javascript
+// __tests__/integration/api.test.js
+describe('Nexus API Integration', () => {
+  let testSessionId;
+
+  beforeAll(async () => {
+    // Create test session
+    const session = await nexusClient.createSession('Test session');
+    testSessionId = session.id;
+  });
+
+  afterAll(async () => {
+    // Cleanup
+    // Note: API might not have delete endpoint
+  });
+
+  test('complete conversation flow', async () => {
+    // Send message
+    await nexusClient.sendMessage(testSessionId, 'What is 2+2?');
+
+    // Wait for response
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Get messages
+    const messages = await nexusClient.listMessages(testSessionId);
+
+    // Verify conversation
+    expect(messages).toHaveLength(2);
+    expect(messages[0].type).toBe('user');
+    expect(messages[0].content).toBe('What is 2+2?');
+    expect(messages[1].type).toBe('assistant');
+    expect(messages[1].content).toMatch(/4|four/i);
+  });
+
+  test('handles rate limiting gracefully', async () => {
+    const promises = Array(70).fill(null).map(() => 
+      nexusClient.sendMessage(testSessionId, 'Test')
+    );
+
+    const results = await Promise.allSettled(promises);
+    const rateLimited = results.filter(r => 
+      r.status === 'rejected' && 
+      r.reason.message.includes('429')
+    );
+
+    expect(rateLimited.length).toBeGreaterThan(0);
+  });
+});
+```
+
+## Deployment Checklist
+
+<Checklist>
+  - [ ] Environment variables are properly set
+  - [ ] API keys are stored securely (not in code)
+  - [ ] Error handling is comprehensive
+  - [ ] Logging is configured for production
+  - [ ] Rate limiting is implemented
+  - [ ] Caching is configured
+  - [ ] Health checks are in place
+  - [ ] Monitoring and alerts are set up
+  - [ ] Backup strategies for session data
+  - [ ] Graceful shutdown handling
+  - [ ] Security headers are configured
+  - [ ] Input validation is thorough
+  - [ ] API timeouts are appropriate
+  - [ ] Connection pooling is optimized
+  - [ ] Documentation is up to date
+</Checklist>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/error-handling">
+    Deep dive into error handling strategies
+  </Card>
+  
+  
+  <Card title="Rate Limiting" icon="gauge" href="/rate-limiting">
+    Optimize your API usage
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference/nexus-endpoints/create-session">
+    Explore all API endpoints
+  </Card>
+</CardGroup>

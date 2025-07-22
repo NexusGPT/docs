@@ -1,80 +1,510 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get up and running with the Nexus API in 5 minutes
 ---
 
-## Get started in three steps
+# Quickstart Guide
 
-Get your documentation site running locally and make your first customization.
+This guide will help you make your first API call to Nexus in just 5 minutes. By the end, you'll have created a chat session and sent your first message.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
+Before you begin, make sure you have:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Nexus Account" icon="user">
+    Sign up at [nexusgpt.io](https://nexusgpt.io) if you haven't already
+  </Card>
+  
+  <Card title="API Key" icon="key">
+    Generate an API key from your dashboard (see [Authentication](/authentication))
+  </Card>
 </CardGroup>
 
+## Step 1: Set Up Your Environment
+
+First, store your API key securely as an environment variable:
+
+<CodeGroup>
+
+```bash macOS/Linux
+export NEXUS_API_KEY="your_api_key_here"
+```
+
+```powershell Windows
+$env:NEXUS_API_KEY = "your_api_key_here"
+```
+
+```bash .env file
+NEXUS_API_KEY=your_api_key_here
+```
+
+</CodeGroup>
+
+## Step 2: Create a Chat Session
+
+Let's create your first chat session. This establishes a conversation thread with your AI agent.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.nexusgpt.io/api/public/thread \
+  -H "Content-Type: application/json" \
+  -H "api-key: $NEXUS_API_KEY" \
+  -d '{"message": "Hello! I need help with my order."}'
+```
+
+```javascript Node.js
+const axios = require('axios');
+
+async function createSession() {
+  try {
+    const response = await axios.post(
+      'https://api.nexusgpt.io/api/public/thread',
+      { message: 'Hello! I need help with my order.' },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': process.env.NEXUS_API_KEY
+        }
+      }
+    );
+    
+    console.log('Session created:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error:', error.response?.data || error.message);
+  }
+}
+
+createSession();
+```
+
+```python Python
+import os
+import requests
+
+def create_session():
+    url = "https://api.nexusgpt.io/api/public/thread"
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": os.environ.get("NEXUS_API_KEY")
+    }
+    data = {
+        "message": "Hello! I need help with my order."
+    }
+    
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        response.raise_for_status()
+        print("Session created:", response.json())
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error: {e}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response.text}")
+
+session = create_session()
+```
+
+</CodeGroup>
+
+**Expected Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "createdAt": "2024-01-20T10:30:00Z"
+}
+```
+
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Save the `id` from the response - you'll need it to send messages to this session.
 </Note>
+
+## Step 3: Send a Message
+
+Now let's send a follow-up message to the session we just created:
+
+<CodeGroup>
+
+```bash cURL
+# Replace SESSION_ID with the id from Step 2
+curl -X POST https://api.nexusgpt.io/api/public/thread/SESSION_ID/messages \
+  -H "Content-Type: application/json" \
+  -H "api-key: $NEXUS_API_KEY" \
+  -d '{"message": "My order number is #12345"}'
+```
+
+```javascript Node.js
+async function sendMessage(sessionId, message) {
+  try {
+    const response = await axios.post(
+      `https://api.nexusgpt.io/api/public/thread/${sessionId}/messages`,
+      { message },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': process.env.NEXUS_API_KEY
+        }
+      }
+    );
+    
+    console.log('Message sent successfully');
+    return response.data;
+  } catch (error) {
+    console.error('Error:', error.response?.data || error.message);
+  }
+}
+
+// Use the session ID from Step 2
+sendMessage('550e8400-e29b-41d4-a716-446655440000', 'My order number is #12345');
+```
+
+```python Python
+def send_message(session_id, message):
+    url = f"https://api.nexusgpt.io/api/public/thread/{session_id}/messages"
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": os.environ.get("NEXUS_API_KEY")
+    }
+    data = {"message": message}
+    
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        response.raise_for_status()
+        print("Message sent successfully")
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error: {e}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response.text}")
+
+# Use the session ID from Step 2
+send_message('550e8400-e29b-41d4-a716-446655440000', 'My order number is #12345')
+```
+
+</CodeGroup>
+
+## Step 4: Retrieve Messages
+
+To see the conversation history, including the AI's responses:
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET "https://api.nexusgpt.io/api/public/thread/SESSION_ID/messages?limit=10" \
+  -H "api-key: $NEXUS_API_KEY"
+```
+
+```javascript Node.js
+async function getMessages(sessionId) {
+  try {
+    const response = await axios.get(
+      `https://api.nexusgpt.io/api/public/thread/${sessionId}/messages`,
+      {
+        headers: {
+          'api-key': process.env.NEXUS_API_KEY
+        },
+        params: {
+          limit: 10,
+          order: 'asc'
+        }
+      }
+    );
+    
+    console.log('Messages:');
+    response.data.forEach(msg => {
+      console.log(`${msg.type}: ${msg.content}`);
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error:', error.response?.data || error.message);
+  }
+}
+
+// Use the session ID from Step 2
+getMessages('550e8400-e29b-41d4-a716-446655440000');
+```
+
+```python Python
+def get_messages(session_id, limit=10):
+    url = f"https://api.nexusgpt.io/api/public/thread/{session_id}/messages"
+    headers = {
+        "api-key": os.environ.get("NEXUS_API_KEY")
+    }
+    params = {
+        "limit": limit,
+        "order": "asc"
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        messages = response.json()
+        
+        print("Messages:")
+        for msg in messages:
+            print(f"{msg['type']}: {msg['content']}")
+        
+        return messages
+    except requests.exceptions.RequestException as e:
+        print(f"Error: {e}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response.text}")
+
+# Use the session ID from Step 2
+get_messages('550e8400-e29b-41d4-a716-446655440000')
+```
+
+</CodeGroup>
+
+**Expected Response:**
+```json
+[
+  {
+    "id": "msg_001",
+    "type": "user",
+    "content": "Hello! I need help with my order.",
+    "createdAt": "2024-01-20T10:30:00Z"
+  },
+  {
+    "id": "msg_002",
+    "type": "assistant",
+    "content": "I'd be happy to help you with your order! Could you please provide your order number?",
+    "createdAt": "2024-01-20T10:30:05Z"
+  },
+  {
+    "id": "msg_003",
+    "type": "user",
+    "content": "My order number is #12345",
+    "createdAt": "2024-01-20T10:31:00Z"
+  },
+  {
+    "id": "msg_004",
+    "type": "assistant",
+    "content": "Thank you! I'm looking up order #12345 for you now...",
+    "createdAt": "2024-01-20T10:31:05Z"
+  }
+]
+```
+
+## Complete Working Example
+
+Here's a complete example that ties everything together:
+
+<CodeGroup>
+
+```javascript Node.js
+const axios = require('axios');
+
+class NexusQuickstart {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+    this.baseUrl = 'https://api.nexusgpt.io/api/public';
+  }
+
+  async run() {
+    try {
+      // Step 1: Create a session
+      console.log('Creating session...');
+      const session = await this.createSession('Hello! I need help.');
+      console.log('Session ID:', session.id);
+
+      // Step 2: Send a message
+      console.log('\nSending message...');
+      await this.sendMessage(session.id, 'Can you help me track my order?');
+
+      // Step 3: Wait for response
+      console.log('\nWaiting for response...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Step 4: Get messages
+      console.log('\nRetrieving conversation...');
+      const messages = await this.getMessages(session.id);
+      
+      console.log('\n--- Conversation ---');
+      messages.forEach(msg => {
+        console.log(`${msg.type.toUpperCase()}: ${msg.content}`);
+      });
+
+    } catch (error) {
+      console.error('Error:', error.message);
+    }
+  }
+
+  async createSession(initialMessage) {
+    const response = await axios.post(
+      `${this.baseUrl}/thread`,
+      { message: initialMessage },
+      { headers: this.getHeaders() }
+    );
+    return response.data;
+  }
+
+  async sendMessage(sessionId, message) {
+    const response = await axios.post(
+      `${this.baseUrl}/thread/${sessionId}/messages`,
+      { message },
+      { headers: this.getHeaders() }
+    );
+    return response.data;
+  }
+
+  async getMessages(sessionId) {
+    const response = await axios.get(
+      `${this.baseUrl}/thread/${sessionId}/messages`,
+      { 
+        headers: { 'api-key': this.apiKey },
+        params: { limit: 20, order: 'asc' }
+      }
+    );
+    return response.data;
+  }
+
+  getHeaders() {
+    return {
+      'Content-Type': 'application/json',
+      'api-key': this.apiKey
+    };
+  }
+}
+
+// Run the quickstart
+const quickstart = new NexusQuickstart(process.env.NEXUS_API_KEY);
+quickstart.run();
+```
+
+```python Python
+import os
+import time
+import requests
+from typing import Dict, List, Any
+
+class NexusQuickstart:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
+        self.base_url = "https://api.nexusgpt.io/api/public"
+        self.session_id = None
+    
+    def run(self):
+        try:
+            # Step 1: Create a session
+            print("Creating session...")
+            session = self.create_session("Hello! I need help.")
+            print(f"Session ID: {session['id']}")
+            
+            # Step 2: Send a message
+            print("\nSending message...")
+            self.send_message(session['id'], "Can you help me track my order?")
+            
+            # Step 3: Wait for response
+            print("\nWaiting for response...")
+            time.sleep(2)
+            
+            # Step 4: Get messages
+            print("\nRetrieving conversation...")
+            messages = self.get_messages(session['id'])
+            
+            print("\n--- Conversation ---")
+            for msg in messages:
+                print(f"{msg['type'].upper()}: {msg['content']}")
+                
+        except Exception as e:
+            print(f"Error: {e}")
+    
+    def create_session(self, initial_message: str) -> Dict[str, Any]:
+        response = requests.post(
+            f"{self.base_url}/thread",
+            json={"message": initial_message},
+            headers=self.get_headers()
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    def send_message(self, session_id: str, message: str) -> Dict[str, Any]:
+        response = requests.post(
+            f"{self.base_url}/thread/{session_id}/messages",
+            json={"message": message},
+            headers=self.get_headers()
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    def get_messages(self, session_id: str) -> List[Dict[str, Any]]:
+        response = requests.get(
+            f"{self.base_url}/thread/{session_id}/messages",
+            headers={"api-key": self.api_key},
+            params={"limit": 20, "order": "asc"}
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    def get_headers(self) -> Dict[str, str]:
+        return {
+            "Content-Type": "application/json",
+            "api-key": self.api_key
+        }
+
+# Run the quickstart
+if __name__ == "__main__":
+    api_key = os.environ.get("NEXUS_API_KEY")
+    if not api_key:
+        print("Please set NEXUS_API_KEY environment variable")
+    else:
+        quickstart = NexusQuickstart(api_key)
+        quickstart.run()
+```
+
+</CodeGroup>
+
+## Next Steps
+
+Congratulations! You've successfully:
+- ✅ Created a chat session
+- ✅ Sent messages to your AI agent
+- ✅ Retrieved conversation history
+
+Now explore more advanced features:
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore all available endpoints and parameters
+  </Card>
+  
+  <Card title="SDK Examples" icon="book" href="/sdk-examples">
+    Find complete examples in multiple languages
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation" href="/error-handling">
+    Learn how to handle errors gracefully
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/best-practices">
+    Optimize your integration for production
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Getting 401 Unauthorized">
+    - Verify your API key is correct
+    - Check that the header name is exactly `api-key`
+    - Ensure there are no extra spaces or characters
+  </Accordion>
+  
+  <Accordion title="Session not found">
+    - Confirm you're using the correct session ID
+    - Check that the session hasn't expired
+    - Try creating a new session
+  </Accordion>
+  
+  <Accordion title="No response from agent">
+    - Wait a bit longer (2-3 seconds) before fetching messages
+    - Check that your agent is properly configured
+    - Verify the agent has the necessary permissions
+  </Accordion>
+</AccordionGroup>
+
+Need help? Contact support at shady@gpt.nexus

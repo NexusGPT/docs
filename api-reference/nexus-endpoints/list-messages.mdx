@@ -1,0 +1,590 @@
+---
+title: List Messages
+api: GET https://api.nexusgpt.io/api/public/thread/{id}/messages
+description: Retrieve messages from a chat session with pagination support
+---
+
+# List Messages
+
+Retrieves messages from a chat session with support for pagination, filtering, and sorting. This endpoint is essential for displaying conversation history and implementing real-time chat interfaces.
+
+## Endpoint
+
+```
+GET https://api.nexusgpt.io/api/public/thread/{id}/messages
+```
+
+## Authentication
+
+<ParamField header="api-key" type="string" required>
+  Your Nexus API key for authentication
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The session ID to retrieve messages from
+</ParamField>
+
+## Query Parameters
+
+<ParamField query="limit" type="number" default="20">
+  Number of messages to return (1-100)
+</ParamField>
+
+<ParamField query="order" type="string" default="asc">
+  Sort order for messages
+  - `asc` - Oldest messages first (chronological)
+  - `desc` - Newest messages first (reverse chronological)
+</ParamField>
+
+<ParamField query="after" type="string">
+  Cursor for pagination. Returns messages after this message ID.
+</ParamField>
+
+<ParamField query="before" type="string">
+  Cursor for pagination. Returns messages before this message ID.
+</ParamField>
+
+<ResponseExample>
+```json Success Response
+[
+  {
+    "id": "msg_001",
+    "type": "user",
+    "content": "Hello, I need help with my order",
+    "createdAt": "2024-01-20T10:30:00Z"
+  },
+  {
+    "id": "msg_002",
+    "type": "assistant",
+    "content": "I'd be happy to help you with your order! Could you please provide your order number?",
+    "createdAt": "2024-01-20T10:30:05Z",
+    "metadata": {
+      "processingTime": 1.2,
+      "modelUsed": "gpt-4"
+    }
+  },
+  {
+    "id": "msg_003",
+    "type": "user",
+    "content": "Sure, it's #12345",
+    "createdAt": "2024-01-20T10:30:30Z"
+  },
+  {
+    "id": "msg_004",
+    "type": "tool",
+    "content": "Order #12345 found: Status - Shipped, Tracking: 1Z999AA1012345678",
+    "toolCallId": "call_abc123",
+    "createdAt": "2024-01-20T10:30:32Z"
+  },
+  {
+    "id": "msg_005",
+    "type": "assistant",
+    "content": "Great! I found your order #12345. It has been shipped and is currently in transit. Your tracking number is 1Z999AA1012345678.",
+    "createdAt": "2024-01-20T10:30:35Z"
+  }
+]
+```
+</ResponseExample>
+
+## Response Fields
+
+<ResponseField name="Array" type="Message[]" required>
+  Array of message objects
+  
+  <Expandable title="Message object properties">
+    <ResponseField name="id" type="string" required>
+      Unique identifier for the message
+    </ResponseField>
+    
+    <ResponseField name="type" type="string" required>
+      Type of message:
+      - `user` - Message from the user
+      - `assistant` - Response from the AI agent
+      - `tool` - Result from a tool execution
+      - `system` - System notification
+    </ResponseField>
+    
+    <ResponseField name="content" type="string" required>
+      The message content
+    </ResponseField>
+    
+    <ResponseField name="createdAt" type="string" required>
+      ISO 8601 timestamp of when the message was created
+    </ResponseField>
+    
+    <ResponseField name="toolCallId" type="string">
+      For tool messages, the ID of the tool call
+    </ResponseField>
+    
+    <ResponseField name="metadata" type="object">
+      Additional message metadata (varies by message type)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Usage
+
+<CodeGroup>
+
+```bash cURL
+# Get latest 10 messages
+curl -X GET "https://api.nexusgpt.io/api/public/thread/550e8400-e29b-41d4-a716-446655440000/messages?limit=10&order=desc" \
+  -H "api-key: YOUR_API_KEY"
+
+# Get messages with pagination
+curl -X GET "https://api.nexusgpt.io/api/public/thread/550e8400-e29b-41d4-a716-446655440000/messages?limit=20&after=msg_100" \
+  -H "api-key: YOUR_API_KEY"
+```
+
+```javascript Node.js
+const axios = require('axios');
+
+async function getMessages(sessionId, options = {}) {
+  const {
+    limit = 20,
+    order = 'asc',
+    after = null,
+    before = null
+  } = options;
+  
+  const params = new URLSearchParams({
+    limit: limit.toString(),
+    order
+  });
+  
+  if (after) params.append('after', after);
+  if (before) params.append('before', before);
+  
+  try {
+    const response = await axios.get(
+      `https://api.nexusgpt.io/api/public/thread/${sessionId}/messages?${params}`,
+      {
+        headers: {
+          'api-key': process.env.NEXUS_API_KEY
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching messages:', error.response?.data);
+    throw error;
+  }
+}
+
+// Example: Get conversation history
+async function displayConversation(sessionId) {
+  const messages = await getMessages(sessionId, {
+    limit: 50,
+    order: 'asc'
+  });
+  
+  messages.forEach(msg => {
+    const timestamp = new Date(msg.createdAt).toLocaleTimeString();
+    console.log(`[${timestamp}] ${msg.type.toUpperCase()}: ${msg.content}`);
+  });
+}
+
+// Example: Implement pagination
+async function getAllMessages(sessionId) {
+  const allMessages = [];
+  let after = null;
+  
+  while (true) {
+    const messages = await getMessages(sessionId, {
+      limit: 100,
+      order: 'asc',
+      after
+    });
+    
+    if (messages.length === 0) break;
+    
+    allMessages.push(...messages);
+    after = messages[messages.length - 1].id;
+    
+    if (messages.length < 100) break; // Last page
+  }
+  
+  return allMessages;
+}
+```
+
+```python Python
+import os
+import requests
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+
+def get_messages(
+    session_id: str,
+    limit: int = 20,
+    order: str = 'asc',
+    after: Optional[str] = None,
+    before: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Get messages from a session with pagination"""
+    url = f"https://api.nexusgpt.io/api/public/thread/{session_id}/messages"
+    
+    headers = {
+        "api-key": os.environ.get("NEXUS_API_KEY")
+    }
+    
+    params = {
+        "limit": limit,
+        "order": order
+    }
+    
+    if after:
+        params["after"] = after
+    if before:
+        params["before"] = before
+    
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        return response.json()
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching messages: {e}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response.text}")
+        raise
+
+# Example: Display conversation
+def display_conversation(session_id: str):
+    messages = get_messages(session_id, limit=50, order='asc')
+    
+    for msg in messages:
+        timestamp = datetime.fromisoformat(msg['createdAt'].replace('Z', '+00:00'))
+        time_str = timestamp.strftime('%H:%M:%S')
+        print(f"[{time_str}] {msg['type'].upper()}: {msg['content']}")
+
+# Example: Get all messages with pagination
+def get_all_messages(session_id: str) -> List[Dict[str, Any]]:
+    all_messages = []
+    after = None
+    
+    while True:
+        messages = get_messages(
+            session_id,
+            limit=100,
+            order='asc',
+            after=after
+        )
+        
+        if not messages:
+            break
+            
+        all_messages.extend(messages)
+        after = messages[-1]['id']
+        
+        if len(messages) < 100:  # Last page
+            break
+    
+    return all_messages
+
+# Example: Get latest messages for polling
+def get_new_messages(session_id: str, last_message_id: str) -> List[Dict[str, Any]]:
+    """Get messages newer than the last known message"""
+    return get_messages(
+        session_id,
+        limit=10,
+        order='asc',
+        after=last_message_id
+    )
+```
+
+```go Go
+package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "net/url"
+    "os"
+    "strconv"
+    "time"
+)
+
+type Message struct {
+    ID         string                 `json:"id"`
+    Type       string                 `json:"type"`
+    Content    string                 `json:"content"`
+    CreatedAt  time.Time             `json:"createdAt"`
+    ToolCallID string                 `json:"toolCallId,omitempty"`
+    Metadata   map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type GetMessagesOptions struct {
+    Limit  int
+    Order  string
+    After  string
+    Before string
+}
+
+func getMessages(sessionID string, options GetMessagesOptions) ([]Message, error) {
+    baseURL := fmt.Sprintf("https://api.nexusgpt.io/api/public/thread/%s/messages", sessionID)
+    
+    params := url.Values{}
+    if options.Limit > 0 {
+        params.Set("limit", strconv.Itoa(options.Limit))
+    }
+    if options.Order != "" {
+        params.Set("order", options.Order)
+    }
+    if options.After != "" {
+        params.Set("after", options.After)
+    }
+    if options.Before != "" {
+        params.Set("before", options.Before)
+    }
+    
+    fullURL := baseURL
+    if len(params) > 0 {
+        fullURL = fmt.Sprintf("%s?%s", baseURL, params.Encode())
+    }
+    
+    req, err := http.NewRequest("GET", fullURL, nil)
+    if err != nil {
+        return nil, err
+    }
+    
+    req.Header.Set("api-key", os.Getenv("NEXUS_API_KEY"))
+    
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+    
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+    
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("API error: %s", string(body))
+    }
+    
+    var messages []Message
+    if err := json.Unmarshal(body, &messages); err != nil {
+        return nil, err
+    }
+    
+    return messages, nil
+}
+
+// Example: Display conversation
+func displayConversation(sessionID string) error {
+    messages, err := getMessages(sessionID, GetMessagesOptions{
+        Limit: 50,
+        Order: "asc",
+    })
+    if err != nil {
+        return err
+    }
+    
+    for _, msg := range messages {
+        timeStr := msg.CreatedAt.Format("15:04:05")
+        fmt.Printf("[%s] %s: %s\n", timeStr, msg.Type, msg.Content)
+    }
+    
+    return nil
+}
+```
+
+</CodeGroup>
+
+## Pagination Patterns
+
+### Forward Pagination
+```javascript
+// Get messages page by page moving forward
+async function forwardPagination(sessionId) {
+  let messages = [];
+  let after = null;
+  
+  do {
+    const page = await getMessages(sessionId, {
+      limit: 20,
+      order: 'asc',
+      after
+    });
+    
+    messages = messages.concat(page);
+    after = page.length > 0 ? page[page.length - 1].id : null;
+    
+  } while (after && messages.length < 100); // Stop at 100 messages
+  
+  return messages;
+}
+```
+
+### Backward Pagination
+```javascript
+// Get newest messages first
+async function backwardPagination(sessionId) {
+  let messages = [];
+  let before = null;
+  
+  do {
+    const page = await getMessages(sessionId, {
+      limit: 20,
+      order: 'desc',
+      before
+    });
+    
+    messages = page.concat(messages); // Prepend to maintain order
+    before = page.length > 0 ? page[page.length - 1].id : null;
+    
+  } while (before);
+  
+  return messages;
+}
+```
+
+### Real-time Polling
+```javascript
+// Poll for new messages
+async function pollForNewMessages(sessionId, onNewMessage) {
+  let lastMessageId = null;
+  
+  // Get initial messages
+  const initial = await getMessages(sessionId, { limit: 10, order: 'desc' });
+  if (initial.length > 0) {
+    lastMessageId = initial[0].id;
+  }
+  
+  // Poll for new messages
+  setInterval(async () => {
+    if (!lastMessageId) return;
+    
+    const newMessages = await getMessages(sessionId, {
+      order: 'asc',
+      after: lastMessageId
+    });
+    
+    if (newMessages.length > 0) {
+      lastMessageId = newMessages[newMessages.length - 1].id;
+      newMessages.forEach(onNewMessage);
+    }
+  }, 2000); // Poll every 2 seconds
+}
+```
+
+## Message Types
+
+### User Messages
+```json
+{
+  "id": "msg_user_001",
+  "type": "user",
+  "content": "What's the weather like today?",
+  "createdAt": "2024-01-20T10:30:00Z"
+}
+```
+
+### Assistant Messages
+```json
+{
+  "id": "msg_asst_001",
+  "type": "assistant",
+  "content": "I'd be happy to help you with weather information...",
+  "createdAt": "2024-01-20T10:30:05Z",
+  "metadata": {
+    "processingTime": 1.5,
+    "tokensUsed": 150
+  }
+}
+```
+
+### Tool Messages
+```json
+{
+  "id": "msg_tool_001",
+  "type": "tool",
+  "content": "Current weather: 72°F, Sunny",
+  "toolCallId": "call_weather_api",
+  "createdAt": "2024-01-20T10:30:03Z"
+}
+```
+
+### System Messages
+```json
+{
+  "id": "msg_sys_001",
+  "type": "system",
+  "content": "Session started",
+  "createdAt": "2024-01-20T10:29:00Z"
+}
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 404 Not Found
+{
+  "statusCode": 404,
+  "message": "Session not found",
+  "error": "Not Found"
+}
+```
+
+```json 400 Bad Request
+{
+  "statusCode": 400,
+  "message": "Invalid limit parameter. Must be between 1 and 100",
+  "error": "Bad Request"
+}
+```
+
+```json 401 Unauthorized
+{
+  "statusCode": 401,
+  "message": "Invalid API key",
+  "error": "Unauthorized"
+}
+```
+</ResponseExample>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Efficient Pagination">
+    - Use cursors (`after`/`before`) instead of offset-based pagination
+    - Request only as many messages as needed
+    - Cache messages client-side to reduce API calls
+    - Use appropriate page sizes (20-50 messages)
+  </Accordion>
+  
+  <Accordion title="Real-time Updates">
+    - Implement exponential backoff for polling
+    - Track the latest message ID to fetch only new messages
+    - Handle duplicate messages gracefully
+  </Accordion>
+  
+  <Accordion title="Message Rendering">
+    - Sanitize message content before displaying
+    - Handle different message types appropriately
+    - Show loading states during message fetching
+    - Implement virtual scrolling for large conversations
+  </Accordion>
+  
+  <Accordion title="Performance">
+    - Fetch messages in batches
+    - Implement lazy loading for conversation history
+    - Use descending order for recent messages
+    - Minimize API calls with smart caching
+  </Accordion>
+</AccordionGroup>
+
+## Related Endpoints
+
+- [Send Message](/api-reference/nexus-endpoints/send-message) - Send new messages to the session
+- [Get Session](/api-reference/nexus-endpoints/get-session) - Get session information
+- [Create Session](/api-reference/nexus-endpoints/create-session) - Create a new chat session

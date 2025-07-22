@@ -1,0 +1,368 @@
+---
+title: Send Message
+api: POST https://api.nexusgpt.io/api/public/thread/{id}/messages
+description: Send a message to an existing chat session
+---
+
+# Send Message
+
+Sends a message to an existing chat session. The AI agent will process the message and generate an appropriate response based on the conversation context.
+
+## Endpoint
+
+```
+POST https://api.nexusgpt.io/api/public/thread/{id}/messages
+```
+
+## Authentication
+
+<ParamField header="api-key" type="string" required>
+  Your Nexus API key for authentication
+</ParamField>
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The session ID obtained from creating a session. This identifies which conversation thread to send the message to.
+</ParamField>
+
+## Request Body
+
+<ParamField body="message" type="string" required>
+  The message content to send to the AI agent. Maximum length: 4000 characters.
+</ParamField>
+
+<ResponseExample>
+```json Success Response
+{
+  "success": true
+}
+```
+</ResponseExample>
+
+## Response Fields
+
+<ResponseField name="success" type="boolean" required>
+  Indicates whether the message was successfully sent and queued for processing
+</ResponseField>
+
+## Example Usage
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://api.nexusgpt.io/api/public/thread/550e8400-e29b-41d4-a716-446655440000/messages \
+  -H "Content-Type: application/json" \
+  -H "api-key: YOUR_API_KEY" \
+  -d '{"message": "Can you help me track my order #12345?"}'
+```
+
+```javascript Node.js
+const axios = require('axios');
+
+async function sendMessage(sessionId, message) {
+  try {
+    const response = await axios.post(
+      `https://api.nexusgpt.io/api/public/thread/${sessionId}/messages`,
+      { message },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': process.env.NEXUS_API_KEY
+        }
+      }
+    );
+    
+    console.log('Message sent successfully');
+    
+    // Wait a moment for the agent to process
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Fetch the latest messages to see the response
+    return await getMessages(sessionId);
+    
+  } catch (error) {
+    console.error('Error sending message:', error.response?.data);
+    throw error;
+  }
+}
+
+// Send a message to an existing session
+await sendMessage('550e8400-e29b-41d4-a716-446655440000', 'Can you help me track my order #12345?');
+```
+
+```python Python
+import os
+import requests
+import time
+
+def send_message(session_id, message):
+    """Send a message to an existing session"""
+    url = f"https://api.nexusgpt.io/api/public/thread/{session_id}/messages"
+    
+    headers = {
+        "Content-Type": "application/json",
+        "api-key": os.environ.get("NEXUS_API_KEY")
+    }
+    
+    data = {
+        "message": message
+    }
+    
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        response.raise_for_status()
+        
+        print("Message sent successfully")
+        
+        # Wait for agent to process
+        time.sleep(1.5)
+        
+        # Fetch latest messages to see response
+        return get_messages(session_id)
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Error sending message: {e}")
+        if hasattr(e, 'response'):
+            print(f"Response: {e.response.text}")
+        raise
+
+# Send a message to an existing session
+send_message('550e8400-e29b-41d4-a716-446655440000', 'Can you help me track my order #12345?')
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "os"
+    "time"
+)
+
+type SendMessageRequest struct {
+    Message string `json:"message"`
+}
+
+type SendMessageResponse struct {
+    Success bool `json:"success"`
+}
+
+func sendMessage(sessionID, message string) error {
+    url := fmt.Sprintf("https://api.nexusgpt.io/api/public/thread/%s/messages", sessionID)
+    
+    requestBody := SendMessageRequest{
+        Message: message,
+    }
+    
+    jsonData, err := json.Marshal(requestBody)
+    if err != nil {
+        return err
+    }
+    
+    req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+    if err != nil {
+        return err
+    }
+    
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("api-key", os.Getenv("NEXUS_API_KEY"))
+    
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+    
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return err
+    }
+    
+    if resp.StatusCode != http.StatusOK {
+        return fmt.Errorf("API error: %s", string(body))
+    }
+    
+    var result SendMessageResponse
+    if err := json.Unmarshal(body, &result); err != nil {
+        return err
+    }
+    
+    if result.Success {
+        fmt.Println("Message sent successfully")
+        
+        // Wait for agent to process
+        time.Sleep(1500 * time.Millisecond)
+        
+        // Fetch messages to see response
+        // getMessages(sessionID)
+    }
+    
+    return nil
+}
+```
+
+</CodeGroup>
+
+## Message Processing
+
+### How It Works
+
+1. **Message Receipt**: Your message is received and validated
+2. **Context Loading**: Previous conversation history is loaded
+3. **AI Processing**: The agent processes your message with full context
+4. **Response Generation**: A contextual response is generated
+5. **Storage**: Both messages are stored in the conversation thread
+
+### Response Time
+
+- Typical response time: 1-3 seconds
+- Complex queries may take longer
+- Use polling to retrieve responses
+
+## Common Patterns
+
+### 1. Send and Wait Pattern
+```javascript
+async function sendAndWaitForResponse(sessionId, message) {
+  // Send the message
+  await sendMessage(sessionId, message);
+  
+  // Poll for response (with exponential backoff)
+  let attempts = 0;
+  while (attempts < 5) {
+    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(1.5, attempts)));
+    
+    const messages = await getMessages(sessionId, { limit: 2, order: 'desc' });
+    const latestMessage = messages[0];
+    
+    if (latestMessage.type === 'assistant' && latestMessage.createdAt > sentTime) {
+      return latestMessage;
+    }
+    
+    attempts++;
+  }
+  
+  throw new Error('Timeout waiting for response');
+}
+```
+
+### 2. Conversation Flow
+```javascript
+async function handleConversation(sessionId) {
+  // Initial greeting
+  await sendMessage(sessionId, "Hello!");
+  
+  // Follow-up with context
+  await sendMessage(sessionId, "I need help with order #12345");
+  
+  // Provide additional details
+  await sendMessage(sessionId, "It was supposed to arrive yesterday");
+}
+```
+
+### 3. Structured Queries
+```javascript
+// Send structured information
+const orderQuery = {
+  intent: "track_order",
+  orderId: "12345",
+  email: "customer@example.com"
+};
+
+await sendMessage(sessionId, JSON.stringify(orderQuery));
+```
+
+## Error Responses
+
+<ResponseExample>
+```json 401 Unauthorized
+{
+  "statusCode": 401,
+  "message": "Invalid API key",
+  "error": "Unauthorized"
+}
+```
+
+```json 404 Not Found
+{
+  "statusCode": 404,
+  "message": "Session not found",
+  "error": "Not Found"
+}
+```
+
+```json 400 Bad Request
+{
+  "statusCode": 400,
+  "message": "Message is required",
+  "error": "Bad Request"
+}
+```
+
+```json 413 Payload Too Large
+{
+  "statusCode": 413,
+  "message": "Message exceeds maximum length of 4000 characters",
+  "error": "Payload Too Large"
+}
+```
+
+```json 429 Too Many Requests
+{
+  "statusCode": 429,
+  "message": "Rate limit exceeded",
+  "error": "Too Many Requests"
+}
+```
+</ResponseExample>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Message Formatting">
+    - Keep messages concise and clear
+    - Use proper punctuation and grammar
+    - Break complex queries into multiple messages
+    - Avoid sending multiple messages too quickly
+  </Accordion>
+  
+  <Accordion title="Context Management">
+    - Send related messages in the same session
+    - Create new sessions for unrelated topics
+    - Include relevant details in your messages
+    - Reference previous messages when needed
+  </Accordion>
+  
+  <Accordion title="Error Handling">
+    - Implement retry logic for failed sends
+    - Handle session expiration gracefully
+    - Validate message content before sending
+    - Log failed messages for debugging
+  </Accordion>
+  
+  <Accordion title="Performance Tips">
+    - Batch related information in single messages
+    - Use appropriate polling intervals
+    - Implement client-side rate limiting
+    - Cache session IDs for reuse
+  </Accordion>
+</AccordionGroup>
+
+## Limitations
+
+- **Message Length**: Maximum 4000 characters per message
+- **Rate Limits**: 60 messages per minute per API key
+- **Session Limits**: Messages must be sent to active sessions
+- **Content Policy**: Messages must comply with usage policies
+
+## Related Endpoints
+
+- [Create Session](/api-reference/nexus-endpoints/create-session) - Create a new chat session
+- [List Messages](/api-reference/nexus-endpoints/list-messages) - Retrieve conversation history
+- [Get Session](/api-reference/nexus-endpoints/get-session) - Check session status

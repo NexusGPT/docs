@@ -1,6 +1,6 @@
 ---
-title: Welcome to Nexus API
-description: Build powerful AI-powered chat experiences with the Nexus API
+title: Introduction
+description: Welcome to Nexus API - Build powerful AI-powered chat experiences
 ---
 
 # Welcome to Nexus API
@@ -15,19 +15,7 @@ Nexus is a powerful platform for creating and deploying AI agents that can:
 - Process complex queries with reasoning capabilities
 - Scale to handle multiple concurrent sessions
 
-## Quick Start
-
-<CardGroup cols={2}>
-  <Card title="Get Started in 5 Minutes" icon="rocket" href="/quickstart">
-    Create your first chat session and send messages with our quickstart guide
-  </Card>
-  
-  <Card title="Authentication" icon="key" href="/authentication">
-    Set up your API key and learn about security best practices
-  </Card>
-</CardGroup>
-
-## Core Features
+## Key Features
 
 <CardGroup cols={2}>
   <Card title="Easy Integration" icon="plug">
@@ -47,7 +35,7 @@ Nexus is a powerful platform for creating and deploying AI agents that can:
   </Card>
 </CardGroup>
 
-## Popular Use Cases
+## Use Cases
 
 ### Customer Support
 Deploy AI agents to handle customer inquiries, troubleshoot issues, and escalate when necessary.
@@ -61,26 +49,6 @@ Build conversational interfaces for your applications that feel natural and resp
 ### Process Automation
 Automate workflows by integrating AI agents with your existing tools and systems.
 
-## Explore the Documentation
-
-<CardGroup cols={2}>
-  <Card title="API Reference" icon="code" href="/api-reference/nexus-endpoints/create-session">
-    Detailed documentation for all API endpoints
-  </Card>
-  
-  <Card title="SDK Examples" icon="book" href="/sdk-examples">
-    Complete code examples in multiple languages
-  </Card>
-  
-  <Card title="Error Handling" icon="triangle-exclamation" href="/error-handling">
-    Learn how to handle errors gracefully
-  </Card>
-  
-  <Card title="Best Practices" icon="star" href="/best-practices">
-    Production-ready patterns and guidelines
-  </Card>
-</CardGroup>
-
 ## Architecture Overview
 
 ```mermaid
@@ -92,18 +60,68 @@ graph LR
     B -->|Response| A
 ```
 
-## Need Help?
+## Getting Started
+
+<Steps>
+  <Step title="Create Account">
+    Sign up for a Nexus account at [nexusgpt.io](https://nexusgpt.io)
+  </Step>
+  
+  <Step title="Configure Agent">
+    Create and configure your AI agent in the Nexus dashboard
+  </Step>
+  
+  <Step title="Generate API Key">
+    Create an API integration and generate your authentication key
+  </Step>
+  
+  <Step title="Make First Call">
+    Use our API to create a session and start chatting
+  </Step>
+</Steps>
+
+## Quick Example
+
+Here's how simple it is to get started:
+
+```javascript
+const response = await fetch('https://api.nexusgpt.io/api/public/thread', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'api-key': 'YOUR_API_KEY'
+  },
+  body: JSON.stringify({
+    message: 'Hello, how can you help me today?'
+  })
+});
+
+const session = await response.json();
+console.log('Session created:', session.id);
+```
+
+## What's Next?
 
 <CardGroup cols={2}>
-  <Card title="Support" icon="envelope" href="mailto:shady@gpt.nexus">
-    Contact our support team for assistance
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Get up and running with the Nexus API in 5 minutes
   </Card>
   
-  <Card title="Dashboard" icon="gauge" href="https://gpt.nexus">
-    Access your dashboard to manage API keys and monitor usage
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn about API keys and security best practices
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore all available endpoints and parameters
+  </Card>
+  
+  <Card title="SDK Examples" icon="book" href="/sdk-examples">
+    Find examples in your preferred programming language
   </Card>
 </CardGroup>
 
----
+## Need Help?
 
-Ready to get started? Head over to our [Quickstart Guide](/quickstart) to make your first API call in minutes!
+- **Documentation**: You're in the right place!
+- **Support**: Email us at shady@gpt.nexus
+- **Dashboard**: Access your account at [gpt.nexus](https://gpt.nexus)
