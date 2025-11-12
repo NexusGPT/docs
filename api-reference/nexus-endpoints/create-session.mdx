@@ -52,18 +52,17 @@ POST https://api.nexusgpt.io/api/public/thread
 ```bash cURL
 curl -X POST https://api.nexusgpt.io/api/public/thread \
   -H "Content-Type: application/json" \
-  -H "api-key: YOUR_API_KEY" \
-  -d '{"message": "Hello, I need help with my account"}'
+  -H "api-key: YOUR_API_KEY"
 ```
 
 ```javascript Node.js
 const axios = require('axios');
 
-async function createSession(initialMessage) {
+async function createSession() {
   try {
     const response = await axios.post(
       'https://api.nexusgpt.io/api/public/thread',
-      { message: initialMessage },
+      {},
       {
         headers: {
           'Content-Type': 'application/json',
@@ -80,8 +79,10 @@ async function createSession(initialMessage) {
   }
 }
 
-// Create session with initial message
-const session = await createSession('Hello, I need help with my account');
+// Create session
+const session = await createSession();
+// Now send your first message
+await sendMessage(session.id, 'Hello, I need help with my account');
 ```
 
 ```python Python

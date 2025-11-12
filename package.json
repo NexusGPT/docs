@@ -1,0 +1,15 @@
+{
+  "name": "@nexus/docs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nexus API Documentation powered by Mintlify",
+  "scripts": {
+    "dev": "mintlify dev",
+    "dev:direct": "mintlify dev --no-open --port 3002",
+    "build": "echo 'No build step required for documentation'",
+    "preview": "mintlify preview"
+  },
+  "devDependencies": {
+    "mintlify": "^4.2.185"
+  }
+}

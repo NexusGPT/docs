@@ -7,6 +7,9 @@
     "light": "#2da399",
     "dark": "#156159"
   },
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude", "perplexity"]
+  },
   "favicon": "/favicon.ico",
   "navigation": {
     "tabs": [
@@ -30,20 +33,10 @@
       },
       {
         "tab": "API Reference",
-        "href": "api-reference/introduction",
         "groups": [
           {
             "group": "Overview",
-            "pages": [
-              {
-                "page": "api-reference/introduction",
-                "label": "API Reference"
-              },
-              {
-                "page": "NEXUS_API_DOCUMENTATION",
-                "label": "Integration Guide"
-              }
-            ]
+            "pages": ["api-reference/introduction"]
           },
           {
             "group": "Endpoints",
@@ -51,7 +44,8 @@
               "api-reference/nexus-endpoints/create-session",
               "api-reference/nexus-endpoints/send-message",
               "api-reference/nexus-endpoints/get-session",
-              "api-reference/nexus-endpoints/list-messages"
+              "api-reference/nexus-endpoints/list-messages",
+              "api-reference/nexus-endpoints/rate-message"
             ]
           }
         ]

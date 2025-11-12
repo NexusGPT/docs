@@ -1,0 +1,35 @@
+---
+title: Integration Guide
+description: Learn how to integrate Nexus API into your applications
+---
+
+# Integration Guide
+
+This guide will help you integrate the Nexus API into your applications.
+
+## Getting Started
+
+Before you begin, make sure you have:
+- An API key from your [Nexus Dashboard](https://gpt.nexus/App/Integrations)
+- Your preferred HTTP client or SDK
+
+## Authentication
+
+All API requests require authentication using your API key. Include it in the request headers:
+
+```bash
+curl -H "api-key: YOUR_API_KEY" https://api.nexusgpt.io/endpoint
+```
+
+## Basic Integration Steps
+
+1. **Obtain your API key** from the Integrations page in your dashboard
+2. **Set up your HTTP client** with the base URL: `https://api.nexusgpt.io`
+3. **Include authentication** in all requests
+4. **Handle responses** and errors appropriately
+
+## Next Steps
+
+- Explore the [API Endpoints](/api-reference/nexus-endpoints/create-session) for detailed endpoint documentation
+- Review [Best Practices](/best-practices) for optimal integration
+- Check [Error Handling](/error-handling) for troubleshooting common issues

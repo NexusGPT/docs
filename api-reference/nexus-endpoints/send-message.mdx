@@ -28,7 +28,7 @@ POST https://api.nexusgpt.io/api/public/thread/{id}/messages
 
 ## Request Body
 
-<ParamField body="message" type="string" required>
+<ParamField body="content" type="string" required>
   The message content to send to the AI agent. Maximum length: 4000 characters.
 </ParamField>
 
@@ -54,7 +54,7 @@ POST https://api.nexusgpt.io/api/public/thread/{id}/messages
 curl -X POST https://api.nexusgpt.io/api/public/thread/550e8400-e29b-41d4-a716-446655440000/messages \
   -H "Content-Type: application/json" \
   -H "api-key: YOUR_API_KEY" \
-  -d '{"message": "Can you help me track my order #12345?"}'
+  -d '{"content": "Can you help me track my order #12345?"}'
 ```
 
 ```javascript Node.js
@@ -64,7 +64,7 @@ async function sendMessage(sessionId, message) {
   try {
     const response = await axios.post(
       `https://api.nexusgpt.io/api/public/thread/${sessionId}/messages`,
-      { message },
+      { content: message },
       {
         headers: {
           'Content-Type': 'application/json',
@@ -106,7 +106,7 @@ def send_message(session_id, message):
     }
     
     data = {
-        "message": message
+        "content": message
     }
     
     try:
@@ -145,7 +145,7 @@ import (
 )
 
 type SendMessageRequest struct {
-    Message string `json:"message"`
+    Content string `json:"content"`
 }
 
 type SendMessageResponse struct {
@@ -156,7 +156,7 @@ func sendMessage(sessionID, message string) error {
     url := fmt.Sprintf("https://api.nexusgpt.io/api/public/thread/%s/messages", sessionID)
     
     requestBody := SendMessageRequest{
-        Message: message,
+        Content: message,
     }
     
     jsonData, err := json.Marshal(requestBody)
@@ -300,7 +300,15 @@ await sendMessage(sessionId, JSON.stringify(orderQuery));
 ```json 400 Bad Request
 {
   "statusCode": 400,
-  "message": "Message is required",
+  "message": "Invalid thread ID format",
+  "error": "Bad Request"
+}
+```
+
+```json 400 Bad Request
+{
+  "statusCode": 400,
+  "message": "Content is required",
   "error": "Bad Request"
 }
 ```
